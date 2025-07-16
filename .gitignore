@@ -1,0 +1,40 @@
+# Ignore source project directory
+# Source directories (add your own)
+source/
+original/
+
+# Ignore converted pattern directory (if using different name)
+
+# Ignore the current pattern directory
+AIops/
+multicloud-gitops/
+AI-Observability-Metrics-Summarizer/
+
+# Common patterns for development
+*.swp
+*.swo
+*~
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.orig
+
+# Operating System Files
+Thumbs.db
+.Spotlight-V100
+.Trashes

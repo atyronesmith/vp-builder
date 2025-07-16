@@ -1,0 +1,15 @@
+# ShellCheck configuration for AI Ops Validated Pattern
+# https://www.shellcheck.net/wiki/Ignore
+
+# Set default shell
+shell=bash
+
+# Enable additional checks
+enable=quote-safe-variables
+enable=require-variable-braces
+
+# Disable checks with justification
+# disable=SC2034  # Example: Unused variables that are exported
+
+# Pattern-specific settings
+# Add any pattern-specific ShellCheck configurations here
