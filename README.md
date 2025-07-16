@@ -9,7 +9,11 @@ This repository provides comprehensive tools and documentation for converting an
 Convert any project to a validated pattern in minutes:
 
 ```bash
+# From a local directory
 ./scripts/convert-to-validated-pattern.sh my-pattern ./source-repo myorg
+
+# From a Git repository URL
+./scripts/convert-to-validated-pattern.sh my-pattern https://github.com/user/repo.git myorg
 ```
 
 ## 📚 What's Included
@@ -90,15 +94,20 @@ pattern-name/
 ### 1. Convert Your Project
 
 ```bash
-# Basic conversion
+# Convert from local directory
 ./scripts/convert-to-validated-pattern.sh my-app ./my-app-repo myorg
 
+# Convert from GitHub repository
+./scripts/convert-to-validated-pattern.sh my-app https://github.com/user/repo.git myorg
+
 # The script will:
+# - Clone the repository (if URL provided)
 # - Create pattern directory structure
 # - Generate configuration files
 # - Migrate Helm charts
 # - Set up GitOps integration
 # - Clone multicloud-gitops reference (if needed)
+# - Clean up temporary files
 ```
 
 ### 2. Complete Setup

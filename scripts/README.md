@@ -9,21 +9,28 @@ Main conversion tool that transforms any OpenShift/Kubernetes project into a val
 
 **Usage:**
 ```bash
-./scripts/convert-to-validated-pattern.sh <pattern-name> <source-repo-path> [github-org]
+./scripts/convert-to-validated-pattern.sh <pattern-name> <source-repo-path-or-url> [github-org]
 
-# Example: Convert a project in current directory
+# Example: Convert a local project directory
 ./scripts/convert-to-validated-pattern.sh my-app ./my-app-repo myorg
 
+# Example: Convert directly from a Git repository URL
+./scripts/convert-to-validated-pattern.sh my-app https://github.com/user/repo.git myorg
 
+# Example: Convert from GitLab or other Git hosting
+./scripts/convert-to-validated-pattern.sh my-app https://gitlab.com/user/repo.git myorg
 ```
 
 **Features:**
+- Accepts both local directories and Git repository URLs
+- Automatically clones remote repositories for conversion
 - Creates complete validated pattern directory structure
 - Migrates existing Helm charts
 - Generates GitOps configuration files
 - Sets up multi-cluster support
 - Includes ShellCheck validation
 - Provides conversion report with next steps
+- Cleans up temporary files automatically
 
 ### 📋 migrate-charts.sh
 Migrates Helm charts from a source repository to the validated pattern structure.

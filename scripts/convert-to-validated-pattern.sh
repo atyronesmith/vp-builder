@@ -5,8 +5,9 @@
 # This script creates the complete validated pattern structure following Red Hat's
 # validated patterns framework (https://validatedpatterns.io)
 #
-# Usage: ./convert-to-validated-pattern.sh <pattern-name> <source-repo-path> [github-org]
+# Usage: ./convert-to-validated-pattern.sh <pattern-name> <source-repo-path-or-url> [github-org]
 # Example: ./convert-to-validated-pattern.sh my-app ./my-app-repo myorg
+# Example: ./convert-to-validated-pattern.sh my-app https://github.com/user/repo.git myorg
 
 set -euo pipefail
 
@@ -21,19 +22,56 @@ log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+# Cleanup function
+cleanup() {
+    if [ -n "${TEMP_CLONE_DIR:-}" ] && [ -d "${TEMP_CLONE_DIR}" ]; then
+        log_info "Cleaning up temporary clone directory..."
+        rm -rf "${TEMP_CLONE_DIR}"
+    fi
+}
+
+# Set trap to cleanup on exit
+trap cleanup EXIT
+
 # Check arguments
 if [ $# -lt 2 ]; then
-    echo "Usage: $0 <pattern-name> <source-repo-path> [github-org]"
-    echo "Example: $0 my-pattern ./source-repo myorg"
+    echo "Usage: $0 <pattern-name> <source-repo-path-or-url> [github-org]"
+    echo "Examples:"
+    echo "  $0 my-pattern ./source-repo myorg"
+    echo "  $0 my-pattern https://github.com/user/repo.git myorg"
     exit 1
 fi
 
 PATTERN_NAME="$1"
-SOURCE_REPO="$2"
+SOURCE_INPUT="$2"
 GITHUB_ORG="${3:-your-org}"
 PATTERN_DIR="${PATTERN_NAME}-validated-pattern"
+TEMP_CLONE_DIR=""
 
-log_info "Starting conversion of ${SOURCE_REPO} to validated pattern: ${PATTERN_NAME}"
+# Check if source is a URL or local path
+if [[ "${SOURCE_INPUT}" =~ ^https?:// ]] || [[ "${SOURCE_INPUT}" =~ ^git@ ]]; then
+    # It's a URL, we need to clone it
+    log_info "Detected repository URL: ${SOURCE_INPUT}"
+    TEMP_CLONE_DIR="/tmp/${PATTERN_NAME}-source-$$"
+    log_info "Cloning repository to temporary directory: ${TEMP_CLONE_DIR}"
+
+    if git clone "${SOURCE_INPUT}" "${TEMP_CLONE_DIR}"; then
+        SOURCE_REPO="${TEMP_CLONE_DIR}"
+        log_info "Repository cloned successfully"
+    else
+        log_error "Failed to clone repository: ${SOURCE_INPUT}"
+        exit 1
+    fi
+else
+    # It's a local path
+    SOURCE_REPO="${SOURCE_INPUT}"
+    if [ ! -d "${SOURCE_REPO}" ]; then
+        log_error "Source directory not found: ${SOURCE_REPO}"
+        exit 1
+    fi
+fi
+
+log_info "Starting conversion of ${SOURCE_INPUT} to validated pattern: ${PATTERN_NAME}"
 
 # Step 1: Create directory structure
 log_info "Creating directory structure..."
@@ -449,7 +487,7 @@ cat > CONVERSION-REPORT.md << EOF
 
 ## Summary
 - Pattern Name: ${PATTERN_NAME}
-- Source Repository: ${SOURCE_REPO}
+- Source Repository: ${SOURCE_INPUT}
 - Conversion Date: $(date)
 
 ## Structure Created
@@ -509,3 +547,9 @@ if [ ! -d "../multicloud-gitops" ]; then
 fi
 
 log_info "See CONVERSION-REPORT.md for next steps"
+
+# Cleanup temporary directory if we cloned a repo
+if [ -n "${TEMP_CLONE_DIR}" ] && [ -d "${TEMP_CLONE_DIR}" ]; then
+    log_info "Cleaning up temporary clone directory..."
+    rm -rf "${TEMP_CLONE_DIR}"
+fi
