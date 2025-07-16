@@ -98,6 +98,7 @@ pattern-name/
 # - Generate configuration files
 # - Migrate Helm charts
 # - Set up GitOps integration
+# - Clone multicloud-gitops reference (if needed)
 ```
 
 ### 2. Complete Setup
@@ -201,9 +202,16 @@ make install
 ## 📚 Resources
 
 - [Validated Patterns Documentation](https://validatedpatterns.io)
-- [MultiCloud GitOps Pattern](https://github.com/validatedpatterns/multicloud-gitops)
+- [MultiCloud GitOps Pattern](https://github.com/validatedpatterns/multicloud-gitops) - **The reference pattern**
 - [Common Framework](https://github.com/validatedpatterns-docs/common)
 - [Red Hat OpenShift](https://www.openshift.com)
+
+## 📌 Important Note
+
+The **multicloud-gitops** repository is the reference implementation for all validated patterns. When creating a new pattern:
+1. The conversion script will automatically clone it if not present
+2. Use it as a reference for structure and best practices
+3. Compare your pattern against it for compliance
 
 ## 📄 License
 

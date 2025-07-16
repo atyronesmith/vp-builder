@@ -467,19 +467,23 @@ cat > CONVERSION-REPORT.md << EOF
    chmod +x pattern.sh
    \`\`\`
 
-2. **Update Configuration**:
+2. **Reference Pattern Available**:
+   The multicloud-gitops pattern is available at: ../multicloud-gitops
+   Use it as a reference for pattern structure and best practices.
+
+3. **Update Configuration**:
    - Edit values-global.yaml with your specifics
    - Update chart repositories in wrapper charts
    - Add application namespaces
    - Configure platform overrides
 
-3. **Configure Secrets**:
+4. **Configure Secrets**:
    \`\`\`bash
    cp values-secret.yaml.template values-secret.yaml
    # Edit with actual credentials
    \`\`\`
 
-4. **Test Deployment**:
+5. **Test Deployment**:
    \`\`\`bash
    make install
    ./scripts/validate-deployment.sh
@@ -496,4 +500,12 @@ EOF
 
 log_info "Conversion complete!"
 log_info "Pattern created in: ${PATTERN_DIR}"
+
+# Check if multicloud-gitops exists as reference
+if [ ! -d "../multicloud-gitops" ]; then
+    log_info "Cloning multicloud-gitops reference pattern..."
+    git clone https://github.com/validatedpatterns/multicloud-gitops.git ../multicloud-gitops
+    log_info "Reference pattern cloned to ../multicloud-gitops"
+fi
+
 log_info "See CONVERSION-REPORT.md for next steps"
