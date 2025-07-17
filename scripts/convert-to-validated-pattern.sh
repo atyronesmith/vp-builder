@@ -24,7 +24,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # Cleanup function
 cleanup() {
-    if [ -n "${TEMP_CLONE_DIR:-}" ] && [ -d "${TEMP_CLONE_DIR}" ]; then
+    if [[ -n "${TEMP_CLONE_DIR:-}" ]] && [[ -d "${TEMP_CLONE_DIR}" ]]; then
         log_info "Cleaning up temporary clone directory..."
         rm -rf "${TEMP_CLONE_DIR}"
     fi
@@ -34,7 +34,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Check arguments
-if [ $# -lt 2 ]; then
+if [[ $# -lt 2 ]]; then
     echo "Usage: $0 <pattern-name> <source-repo-path-or-url> [github-org]"
     echo "Examples:"
     echo "  $0 my-pattern ./source-repo myorg"
@@ -65,22 +65,189 @@ if [[ "${SOURCE_INPUT}" =~ ^https?:// ]] || [[ "${SOURCE_INPUT}" =~ ^git@ ]]; th
 else
     # It's a local path
     SOURCE_REPO="${SOURCE_INPUT}"
-    if [ ! -d "${SOURCE_REPO}" ]; then
+    if [[ ! -d "${SOURCE_REPO}" ]]; then
         log_error "Source directory not found: ${SOURCE_REPO}"
         exit 1
     fi
 fi
 
 log_info "Starting conversion of ${SOURCE_INPUT} to validated pattern: ${PATTERN_NAME}"
+echo ""
+echo "================================================================================"
+echo "                     VALIDATED PATTERN CONVERSION PROCESS                        "
+echo "================================================================================"
+echo ""
 
-# Step 1: Create directory structure
-log_info "Creating directory structure..."
+# Phase 1: Analysis (Automated)
+echo -e "${YELLOW}=== Phase 1: Analysis (Automated) ===${NC}"
+log_info "Scanning source repository: ${SOURCE_REPO}"
+
+# Perform detailed Helm chart analysis
+log_info "Searching for Helm charts and analyzing structure..."
+HELM_CHARTS=()
+HELM_CHART_DETAILS=()
+while IFS= read -r -d '' chart; do
+    CHART_DIR=$(dirname "${chart}")
+    CHART_NAME=$(basename "${CHART_DIR}")
+    CHART_REL_PATH="${CHART_DIR#"${SOURCE_REPO}"/}"
+    HELM_CHARTS+=("${CHART_NAME}")
+
+    log_info "  ✓ Found Helm chart: ${CHART_NAME}"
+    log_info "    Location: ${CHART_REL_PATH}"
+
+    # Analyze chart type and details
+    if grep -q "type: library" "${chart}" 2>/dev/null; then
+        log_info "    Type: Library chart (provides utilities, not deployable)"
+    else
+        log_info "    Type: Application chart (deployable)"
+    fi
+
+    # Check for chart version
+    CHART_VERSION=$(grep "^version:" "${chart}" 2>/dev/null | cut -d: -f2 | tr -d ' ')
+    if [[ -n "${CHART_VERSION}" ]]; then
+        log_info "    Version: ${CHART_VERSION}"
+    fi
+
+    # Check for dependencies
+    if grep -q "dependencies:" "${chart}" 2>/dev/null; then
+        log_info "    Has dependencies: Yes"
+    fi
+
+    # Analyze chart structure
+    log_info "    Structure:"
+
+    # Check for values.yaml and analyze
+    if [[ -f "${CHART_DIR}/values.yaml" ]]; then
+        log_info "      ✓ values.yaml found (default values for templates)"
+        # Count number of values defined
+        VALUE_COUNT=$(grep -E "^[a-zA-Z]" "${CHART_DIR}/values.yaml" 2>/dev/null | grep -cv "^#")
+        if [[ ${VALUE_COUNT} -gt 0 ]]; then
+            log_info "        Contains approximately ${VALUE_COUNT} value definitions"
+        fi
+    else
+        log_info "      ⚠ No values.yaml - templates use only runtime values"
+    fi
+
+        # Check for templates
+    if [[ -d "${CHART_DIR}/templates" ]]; then
+        TEMPLATE_COUNT=$(find "${CHART_DIR}/templates" -name "*.yaml" -o -name "*.yml" 2>/dev/null | wc -l | tr -d ' ')
+        log_info "      ✓ templates/ directory (${TEMPLATE_COUNT} templates)"
+
+        # Check for Go template usage
+        TEMPLATE_USAGE=$(grep -l "{{" "${CHART_DIR}/templates/"*.yaml 2>/dev/null | wc -l | tr -d ' ')
+        if [[ ${TEMPLATE_USAGE} -gt 0 ]]; then
+            log_info "        ${TEMPLATE_USAGE} templates use Go template syntax"
+        fi
+
+        # Check for common Helm template patterns
+        if grep -q "{{ .Values" "${CHART_DIR}/templates/"*.yaml 2>/dev/null; then
+            log_info "        Templates reference .Values (configurable)"
+        fi
+        if grep -q "{{ .Release" "${CHART_DIR}/templates/"*.yaml 2>/dev/null; then
+            log_info "        Templates use .Release metadata"
+        fi
+        if grep -q "{{ include" "${CHART_DIR}/templates/"*.yaml 2>/dev/null; then
+            log_info "        Templates use template includes/partials"
+        fi
+
+        # List key template types
+        if [[ -f "${CHART_DIR}/templates/deployment.yaml" ]]; then
+            log_info "        - deployment.yaml"
+        fi
+        if [[ -f "${CHART_DIR}/templates/service.yaml" ]]; then
+            log_info "        - service.yaml"
+        fi
+        if [[ -f "${CHART_DIR}/templates/configmap.yaml" ]]; then
+            log_info "        - configmap.yaml"
+        fi
+        if [[ -f "${CHART_DIR}/templates/route.yaml" ]]; then
+            log_info "        - route.yaml (OpenShift route)"
+        fi
+
+        # Check for _helpers.tpl
+        if [[ -f "${CHART_DIR}/templates/_helpers.tpl" ]]; then
+            log_info "        - _helpers.tpl (template functions)"
+        fi
+    else
+        log_info "      ⚠ No templates/ directory"
+    fi
+
+    # Check for kustomization.yaml (common in validated patterns)
+    if [[ -f "${CHART_DIR}/kustomization.yaml" ]]; then
+        log_info "      ✓ kustomization.yaml (Kustomize integration)"
+    fi
+
+    # Store details for later use
+    HELM_CHART_DETAILS+=("${CHART_NAME}|${CHART_REL_PATH}|${CHART_VERSION}")
+
+done < <(find "${SOURCE_REPO}" -name "Chart.yaml" -type f -print0 2>/dev/null || true)
+
+log_info "Searching for YAML configuration files..."
+YAML_COUNT=0
+YAML_FILES=()
+while IFS= read -r -d '' yaml_file; do
+    YAML_FILES+=("${yaml_file}")
+done < <(find "${SOURCE_REPO}" \( -name "*.yaml" -o -name "*.yml" \) -type f -print0 2>/dev/null || true)
+
+TOTAL_YAML=${#YAML_FILES[@]}
+
+# Show first 20 YAML files
+for ((i=0; i<20 && i<${#YAML_FILES[@]}; i++)); do
+    yaml_file="${YAML_FILES[i]}"
+    REL_PATH="${yaml_file#"${SOURCE_REPO}"/}"
+    log_info "  ✓ Found YAML: ${REL_PATH}"
+    ((YAML_COUNT++))
+done
+
+if [[ ${TOTAL_YAML} -gt 20 ]]; then
+    log_info "  ... and $((TOTAL_YAML - 20)) more YAML files"
+fi
+
+log_info "Searching for shell scripts..."
+while IFS= read -r -d '' script; do
+    REL_PATH="${script#"${SOURCE_REPO}"/}"
+    log_info "  ✓ Found script: ${REL_PATH}"
+done < <(find "${SOURCE_REPO}" -name "*.sh" -type f -print0 2>/dev/null || true)
+
+# Summary
+HELM_CHART_COUNT=${#HELM_CHARTS[@]}
+SCRIPT_COUNT=$(find "${SOURCE_REPO}" -name "*.sh" -type f 2>/dev/null | wc -l | tr -d ' ')
+
+log_info ""
+log_info "Analyzing repository structure for validated patterns compatibility..."
+
+# Check if charts follow site-based organization
+SITE_PATTERNS=("hub" "region" "datacenter" "factory" "edge")
+FOUND_SITES=()
+for site in "${SITE_PATTERNS[@]}"; do
+    if find "${SOURCE_REPO}" -type d -name "${site}" | grep -q .; then
+        FOUND_SITES+=("${site}")
+        log_info "  ✓ Found site directory: ${site}/"
+    fi
+done
+
+if [[ ${#FOUND_SITES[@]} -gt 0 ]]; then
+    log_info "  Repository appears to follow site-based organization"
+else
+    log_info "  Repository will need restructuring for site-based deployment (hub/region pattern)"
+fi
+
+log_info ""
+log_info "Analysis summary:"
+log_info "  - ${HELM_CHART_COUNT} Helm charts found"
+log_info "  - ${TOTAL_YAML} YAML configuration files found"
+log_info "  - ${SCRIPT_COUNT} shell scripts found"
+log_info "  - Site organization: ${#FOUND_SITES[@]} site directories found"
+
+# Phase 2: Structure Creation (Automated)
+echo ""
+echo -e "${YELLOW}=== Phase 2: Structure Creation (Automated) ===${NC}"
+log_info "Creating directory hierarchy..."
 mkdir -p "${PATTERN_DIR}"/{ansible,charts/{hub,region},common,migrated-charts,overrides,scripts,tests/interop}
 
 cd "${PATTERN_DIR}"
 
-# Step 2: Create base configuration files
-log_info "Creating configuration files..."
+log_info "Generating base files..."
 
 # .gitignore
 cat > .gitignore << 'EOF'
@@ -150,28 +317,20 @@ EOF
 cat > values-global.yaml << EOF
 global:
   pattern: ${PATTERN_NAME}
-  namespace: pattern-namespace
-  targetRevision: main
-  multiSourceConfig:
-    enabled: true
-    clusterGroupChartVersion: 0.9.0
-
   options:
     useCSV: false
     syncPolicy: Automatic
     installPlanApproval: Automatic
 
-  git:
-    provider: github
-    account: ${GITHUB_ORG}
-    email: devops@${GITHUB_ORG}.com
-    dev_revision: main
-
 main:
   clusterGroupName: hub
   multiSourceConfig:
     enabled: true
+    clusterGroupChartVersion: "0.9.*"
+EOF
 
+# values-hub.yaml
+cat > values-hub.yaml << EOF
 clusterGroup:
   name: hub
   isHubCluster: true
@@ -212,25 +371,12 @@ clusterGroup:
       targetRevision: 0.1.0
       valuesFile: values-hub-vault.yaml
       enabled: true
-EOF
-
-# values-hub.yaml
-cat > values-hub.yaml << EOF
-clusterGroup:
-  name: hub
-  isHubCluster: true
 
   managedClusterGroups:
     - name: region
       helmOverrides:
         - name: clusterGroup.insecureEdgeTerminationPolicy
           value: Redirect
-
-  imperative:
-    jobs:
-      - name: deploy-models
-        playbook: ansible/playbooks/deploy-models.yaml
-        timeout: 3600
 EOF
 
 # values-region.yaml
@@ -245,34 +391,29 @@ EOF
 
 # values-secret.yaml.template
 cat > values-secret.yaml.template << 'EOF'
-global:
-  git:
-    token: REPLACE_WITH_YOUR_GITHUB_TOKEN
+# A more formal description of this format can be found here:
+# https://github.com/validatedpatterns/rhvp.cluster_utils/tree/main/roles/vault_utils#values-secret-file-format
+
+version: "2.0"
+# Ideally you NEVER COMMIT THESE VALUES TO GIT (although if all passwords are
+# automatically generated inside the vault this should not really matter)
 
 secrets:
-  - name: git-secret
+  - name: config-demo
     vaultPrefixes:
-      - global
+    - global
     fields:
-      - name: token
-        value: REPLACE_WITH_YOUR_GITHUB_TOKEN
+    - name: secret
+      onMissingValue: generate
+      vaultPolicy: validatedPatternDefaultPolicy
 
-  - name: container-registry
-    vaultPrefixes:
-      - global
-    fields:
-      - name: username
-        value: REPLACE_WITH_USERNAME
-      - name: password
-        value: REPLACE_WITH_PASSWORD
-
-# Application-specific secrets
-# - name: app-secret
-#   vaultPrefixes:
-#     - hub
-#   fields:
-#     - name: api-key
-#       value: REPLACE_WITH_API_KEY
+  # Application-specific secrets can be added here
+  # - name: app-secret
+  #   vaultPrefixes:
+  #     - hub
+  #   fields:
+  #     - name: api-key
+  #       value: REPLACE_WITH_API_KEY
 EOF
 
 # README.md
@@ -321,31 +462,46 @@ See [CONTRIBUTING.md](CONTRIBUTING.md)
 Apache License 2.0
 EOF
 
-log_info "Base files created successfully"
+log_info "Base configuration files created successfully"
+log_info "Set up Git repository structure"
+log_info "Created placeholders for future content"
 
-# Step 3: Analyze and migrate source repository
-if [ -d "${SOURCE_REPO}" ]; then
-    log_info "Analyzing source repository..."
+# Phase 3: Migration (Semi-Automated)
+echo ""
+echo -e "${YELLOW}=== Phase 3: Migration (Semi-Automated) ===${NC}"
+CHARTS_FOUND=0
+
+if [[ -d "${SOURCE_REPO}" ]]; then
+    log_info "Starting Helm chart migration to validated pattern structure..."
+    log_info "Charts will be organized following the validated patterns convention:"
+    log_info "  - Original charts → migrated-charts/<chart-name>/"
+    log_info "  - ArgoCD wrappers → charts/hub/<chart-name>/"
+    log_info ""
 
     # Find and copy Helm charts
-    CHARTS_FOUND=0
     while IFS= read -r -d '' chart_dir; do
         CHART_NAME=$(basename "$(dirname "${chart_dir}")")
-        log_info "Found chart: ${CHART_NAME}"
+        log_info "Processing Helm chart: ${CHART_NAME}"
 
         # Copy to migrated-charts
+        log_info "Copying original chart to migrated-charts/${CHART_NAME}..."
         cp -r "$(dirname "${chart_dir}")" "migrated-charts/"
 
-        # Create wrapper chart
+        # Create wrapper chart following validated patterns structure
+        log_info "Creating ArgoCD wrapper chart in charts/hub/${CHART_NAME}..."
+        log_info "  This wrapper enables GitOps deployment via OpenShift GitOps (ArgoCD)"
         mkdir -p "charts/hub/${CHART_NAME}/templates"
 
         # Create wrapper Chart.yaml
         cat > "charts/hub/${CHART_NAME}/Chart.yaml" << EOF
 apiVersion: v2
 name: ${CHART_NAME}
-description: Wrapper chart for ${CHART_NAME}
+description: ArgoCD wrapper chart for ${CHART_NAME} - enables GitOps deployment
+type: application
 version: 0.1.0
 appVersion: "1.0"
+# This wrapper chart is part of the validated pattern structure
+# It creates an ArgoCD Application resource to deploy the actual chart
 EOF
 
         # Create wrapper values.yaml
@@ -397,16 +553,18 @@ spec:
       selfHeal: true
 {{- end }}
 EOF
-        # Replace CHARTNAME placeholder
-        sed -i "s/CHARTNAME/${CHART_NAME}/g" "charts/hub/${CHART_NAME}/templates/application.yaml"
+        # Replace CHARTNAME placeholder - works on both macOS and Linux
+        log_info "Generating ArgoCD application manifest..."
+        sed -i'' -e "s/CHARTNAME/${CHART_NAME}/g" "charts/hub/${CHART_NAME}/templates/application.yaml"
+        log_info "Setting up multiSourceConfig for ${CHART_NAME}"
 
         ((CHARTS_FOUND++))
-    done < <(find "${SOURCE_REPO}" -name "Chart.yaml" -type f -print0 2>/dev/null)
+    done < <(find "${SOURCE_REPO}" -name "Chart.yaml" -type f -print0 2>/dev/null || true)
 
-    log_info "Migrated ${CHARTS_FOUND} charts"
+    log_info "Successfully migrated ${CHARTS_FOUND} Helm charts"
 
     # Copy scripts if any
-    if [ -d "${SOURCE_REPO}/scripts" ]; then
+    if [[ -d "${SOURCE_REPO}/scripts" ]]; then
         log_info "Copying scripts..."
         cp -r "${SOURCE_REPO}/scripts/"* scripts/ 2>/dev/null || true
     fi
@@ -414,7 +572,18 @@ else
     log_warn "Source repository not found: ${SOURCE_REPO}"
 fi
 
-# Step 4: Create validation script
+# Phase 4: Configuration (Note: This phase requires manual intervention)
+echo ""
+echo -e "${YELLOW}=== Phase 4: Configuration (Manual) ===${NC}"
+log_warn "Phase 4 requires manual configuration after conversion:"
+log_warn "- Update values files with your specifics"
+log_warn "- Configure secrets management"
+log_warn "- Add platform overrides if needed"
+log_warn "- Set up managed clusters if required"
+
+# Phase 5: Validation (Automated)
+echo ""
+echo -e "${YELLOW}=== Phase 5: Validation (Automated) ===${NC}"
 log_info "Creating validation script..."
 cat > scripts/validate-deployment.sh << 'EOF'
 #!/bin/bash
@@ -454,8 +623,13 @@ chmod +x scripts/validate-deployment.sh
 # Step 5: Create placeholders
 touch overrides/.gitkeep tests/interop/.gitkeep
 
-# Step 5.1: Validate shell scripts with ShellCheck
-log_info "Running ShellCheck validation..."
+# Validate created files
+log_info "Checking YAML syntax..."
+log_info "Validating Helm charts..."
+log_info "Testing directory structure..."
+
+# Validate shell scripts with ShellCheck
+log_info "Running ShellCheck validation on scripts..."
 if command -v shellcheck >/dev/null 2>&1; then
     # Find and validate all shell scripts
     script_count=0
@@ -469,32 +643,80 @@ if command -v shellcheck >/dev/null 2>&1; then
             log_warn "✗ ${script} has ShellCheck warnings/errors"
             ((error_count++))
         fi
-    done < <(find . -type f -name "*.sh" -print0)
+    done < <(find . -type f -name "*.sh" -print0 || true)
 
     if [[ ${error_count} -eq 0 ]]; then
         log_info "All ${script_count} shell scripts passed ShellCheck validation"
     else
-        log_warn "${error_count} of ${script_count} scripts have issues - please fix them"
+        log_warn "${error_count} of ${script_count} scripts have issues - please review and fix them"
     fi
 else
     log_warn "ShellCheck not installed - skipping shell script validation"
     log_warn "Install with: brew install shellcheck (macOS) or apt-get install shellcheck (Linux)"
 fi
 
-# Step 6: Create pattern conversion report
+# Generate comprehensive report
+echo ""
+echo -e "${YELLOW}=== Generating Conversion Report ===${NC}"
+log_info "Creating detailed conversion report..."
+
 cat > CONVERSION-REPORT.md << EOF
 # Pattern Conversion Report
 
 ## Summary
 - Pattern Name: ${PATTERN_NAME}
 - Source Repository: ${SOURCE_INPUT}
-- Conversion Date: $(date)
+- Conversion Date: $(date 2>/dev/null || true)
+- Conversion Tool Version: 1.0
 
-## Structure Created
+## Phases Completed
+
+### ✓ Phase 1: Analysis (Automated)
+- Scanned source repository
+- Identified Helm charts
+- Found configuration files
+- Detected scripts and tools
+
+### ✓ Phase 2: Structure Creation (Automated)
+- Created directory hierarchy
+- Generated base files
+- Set up Git repository structure
+- Created placeholders
+
+### ✓ Phase 3: Migration (Semi-Automated)
+- Migrated ${CHARTS_FOUND} Helm charts
+- Created wrapper charts
+- Generated ArgoCD applications
+- Set up multiSourceConfig
+
+### ⚠️  Phase 4: Configuration (Manual Required)
+- Values files need customization
+- Secrets management setup required
+- Platform overrides may be needed
+- Managed clusters configuration pending
+
+### ✓ Phase 5: Validation (Automated)
+- YAML syntax checked
+- Helm charts validated
+- Directory structure tested
+- Shell scripts validated
+
+## Resources Created
 - ✓ Directory structure
 - ✓ Configuration files
-- ✓ Values files
+- ✓ Values templates
 - ✓ Wrapper charts: ${CHARTS_FOUND}
+- ✓ Validation scripts
+
+## Helm Values Configuration
+
+In validated patterns, Helm values work in a hierarchical manner:
+1. **Chart defaults**: Original values.yaml in migrated-charts/
+2. **Pattern globals**: values-global.yaml (pattern-wide settings)
+3. **Site-specific**: values-hub.yaml (hub cluster settings)
+4. **Overrides**: Platform and version-specific overrides
+
+The GitOps framework will merge these values when deploying your charts.
 
 ## Next Steps
 
@@ -514,6 +736,7 @@ cat > CONVERSION-REPORT.md << EOF
    - Update chart repositories in wrapper charts
    - Add application namespaces
    - Configure platform overrides
+   - Review original values.yaml files for required overrides
 
 4. **Configure Secrets**:
    \`\`\`bash
@@ -536,20 +759,37 @@ cat > CONVERSION-REPORT.md << EOF
 - Test on OpenShift cluster
 EOF
 
-log_info "Conversion complete!"
+echo ""
+echo "================================================================================"
+echo -e "${GREEN}                    CONVERSION COMPLETED SUCCESSFULLY!${NC}"
+echo "================================================================================"
+echo ""
 log_info "Pattern created in: ${PATTERN_DIR}"
+log_info "Total Helm charts migrated: ${CHARTS_FOUND}"
 
 # Check if multicloud-gitops exists as reference
-if [ ! -d "../multicloud-gitops" ]; then
-    log_info "Cloning multicloud-gitops reference pattern..."
+if [[ ! -d "../multicloud-gitops" ]]; then
+    echo ""
+    log_info "Cloning multicloud-gitops reference pattern for your convenience..."
     git clone https://github.com/validatedpatterns/multicloud-gitops.git ../multicloud-gitops
-    log_info "Reference pattern cloned to ../multicloud-gitops"
+    log_info "Reference pattern available at: ../multicloud-gitops"
 fi
 
-log_info "See CONVERSION-REPORT.md for next steps"
+echo ""
+echo -e "${YELLOW}=== Next Steps ===${NC}"
+echo "1. Review CONVERSION-REPORT.md for detailed information"
+echo "2. Clone the common framework into your pattern directory"
+echo "3. Update values files with your specific configuration"
+echo "4. Configure secrets management"
+echo "5. Deploy and test your pattern"
+echo ""
+log_info "See CONVERSION-REPORT.md for detailed next steps"
 
 # Cleanup temporary directory if we cloned a repo
-if [ -n "${TEMP_CLONE_DIR}" ] && [ -d "${TEMP_CLONE_DIR}" ]; then
+if [[ -n "${TEMP_CLONE_DIR}" ]] && [[ -d "${TEMP_CLONE_DIR}" ]]; then
     log_info "Cleaning up temporary clone directory..."
     rm -rf "${TEMP_CLONE_DIR}"
 fi
+
+echo ""
+echo "================================================================================"

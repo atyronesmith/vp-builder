@@ -14,7 +14,7 @@ log_warn() { echo -e "${YELLOW}⚠${NC} $1"; }
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 
 # Check if pattern directory is provided
-if [ $# -eq 0 ]; then
+if [[ $# -eq 0 ]]; then
     echo "Usage: $0 <pattern-directory>"
     exit 1
 fi
@@ -28,7 +28,7 @@ echo "Validating pattern: ${PATTERN_DIR}"
 echo "======================================"
 
 # Check if pattern directory exists
-if [ ! -d "${PATTERN_DIR}" ]; then
+if [[ ! -d "${PATTERN_DIR}" ]]; then
     log_error "Pattern directory not found: ${PATTERN_DIR}"
     exit 1
 fi
@@ -40,11 +40,11 @@ check_file() {
     local file="$1"
     local required="${2:-true}"
 
-    if [ -f "${file}" ]; then
+    if [[ -f "${file}" ]]; then
         log_success "${file} exists"
         return 0
     else
-        if [ "${required}" = "true" ]; then
+        if [[ "${required}" = "true" ]]; then
             log_error "${file} MISSING (required)"
             ((ERRORS++))
         else
@@ -60,11 +60,11 @@ check_dir() {
     local dir="$1"
     local required="${2:-true}"
 
-    if [ -d "${dir}" ]; then
+    if [[ -d "${dir}" ]]; then
         log_success "${dir}/ exists"
         return 0
     else
-        if [ "${required}" = "true" ]; then
+        if [[ "${required}" = "true" ]]; then
             log_error "${dir}/ MISSING (required)"
             ((ERRORS++))
         else
@@ -79,7 +79,7 @@ check_dir() {
 check_yaml() {
     local file="$1"
 
-    if [ -f "${file}" ]; then
+    if [[ -f "${file}" ]]; then
         if command -v yamllint >/dev/null 2>&1; then
             if yamllint -d relaxed "${file}" >/dev/null 2>&1; then
                 log_success "${file} - valid YAML"
@@ -110,7 +110,7 @@ check_content() {
     local pattern="$2"
     local description="$3"
 
-    if [ -f "${file}" ]; then
+    if [[ -f "${file}" ]]; then
         if grep -q "${pattern}" "${file}" 2>/dev/null; then
             log_success "${file} contains ${description}"
             return 0
@@ -149,9 +149,9 @@ check_file "README.md"
 echo ""
 echo "Checking pattern framework integration..."
 echo "======================================"
-if [ -L "pattern.sh" ] || [ -f "pattern.sh" ]; then
+if [[ -L "pattern.sh" ]] || [[ -f "pattern.sh" ]]; then
     log_success "pattern.sh exists"
-elif [ -d "common" ]; then
+elif [[ -d "common" ]]; then
     log_warn "common/ exists but pattern.sh symlink missing"
     ((WARNINGS++))
 else
@@ -171,7 +171,7 @@ echo "Validating YAML syntax..."
 echo "======================================"
 # Use find to avoid issues with glob patterns
 for yaml_file in $(find . -maxdepth 1 -name "values-*.yaml" -o -name "pattern-metadata.yaml" 2>/dev/null) ansible/site.yaml; do
-    if [ -f "${yaml_file}" ]; then
+    if [[ -f "${yaml_file}" ]]; then
         check_yaml "${yaml_file}"
     fi
 done
@@ -181,17 +181,17 @@ echo "Validating pattern configuration..."
 echo "======================================"
 
 # Check ansible.cfg
-if [ -f "ansible.cfg" ]; then
+if [[ -f "ansible.cfg" ]]; then
     check_content "ansible.cfg" "host_key_checking" "host_key_checking setting"
 fi
 
 # Check ansible/site.yaml
-if [ -f "ansible/site.yaml" ]; then
+if [[ -f "ansible/site.yaml" ]]; then
     check_content "ansible/site.yaml" "rhvp.cluster_utils" "rhvp.cluster_utils reference"
 fi
 
 # Check Makefile
-if [ -f "Makefile" ]; then
+if [[ -f "Makefile" ]]; then
     if grep -q "common/Makefile" "Makefile" 2>/dev/null; then
         log_success "Makefile delegates to common framework"
     else
@@ -201,7 +201,7 @@ if [ -f "Makefile" ]; then
 fi
 
 # Check values-global.yaml
-if [ -f "values-global.yaml" ]; then
+if [[ -f "values-global.yaml" ]]; then
     check_content "values-global.yaml" "multiSourceConfig:" "multiSourceConfig setting"
     check_content "values-global.yaml" "pattern:" "pattern name"
     check_content "values-global.yaml" "clusterGroup:" "clusterGroup definition"
@@ -213,13 +213,13 @@ echo "Checking Helm charts..."
 echo "======================================"
 CHART_COUNT=0
 for chart in charts/hub/*/Chart.yaml; do
-    if [ -f "${chart}" ]; then
+    if [[ -f "${chart}" ]]; then
         ((CHART_COUNT++))
         CHART_DIR=$(dirname "${chart}")
         CHART_NAME=$(basename "${CHART_DIR}")
 
         # Check for application template
-        if [ -f "${CHART_DIR}/templates/application.yaml" ]; then
+        if [[ -f "${CHART_DIR}/templates/application.yaml" ]]; then
             log_success "${CHART_NAME} has application.yaml"
 
             # Check for multiSourceConfig
@@ -236,7 +236,7 @@ for chart in charts/hub/*/Chart.yaml; do
     fi
 done
 
-if [ "${CHART_COUNT}" -eq 0 ]; then
+if [[ "${CHART_COUNT}" -eq 0 ]]; then
     log_warn "No Helm charts found in charts/hub/"
     ((WARNINGS++))
 else
@@ -248,7 +248,7 @@ echo ""
 echo "Checking platform overrides..."
 echo "======================================"
 for platform in AWS Azure GCP; do
-    if [ -f "overrides/values-${platform}.yaml" ]; then
+    if [[ -f "overrides/values-${platform}.yaml" ]]; then
         log_success "values-${platform}.yaml exists"
     else
         log_warn "values-${platform}.yaml missing"
@@ -260,9 +260,9 @@ done
 echo ""
 echo "Checking scripts..."
 echo "======================================"
-if [ -d "scripts" ]; then
+if [[ -d "scripts" ]]; then
     SCRIPT_COUNT=$(find scripts -name "*.sh" -type f 2>/dev/null | wc -l)
-    if [ "${SCRIPT_COUNT}" -gt 0 ]; then
+    if [[ "${SCRIPT_COUNT}" -gt 0 ]]; then
         log_info "Found ${SCRIPT_COUNT} scripts"
 
         # Run ShellCheck if available
@@ -272,7 +272,7 @@ if [ -d "scripts" ]; then
             echo "======================================"
 
             for script in scripts/*.sh; do
-                if [ -f "${script}" ]; then
+                if [[ -f "${script}" ]]; then
                     if shellcheck "${script}" >/dev/null 2>&1; then
                         log_success "$(basename "${script}") - passes ShellCheck"
                     else
@@ -297,8 +297,8 @@ echo "======================================"
 echo "Validation Summary"
 echo "======================================"
 
-if [ "${ERRORS}" -eq 0 ]; then
-    if [ "${WARNINGS}" -eq 0 ]; then
+if [[ "${ERRORS}" -eq 0 ]]; then
+    if [[ "${WARNINGS}" -eq 0 ]]; then
         echo -e "${GREEN}✓ Pattern validation passed with no issues!${NC}"
         exit 0
     else

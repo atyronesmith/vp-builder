@@ -1,15 +1,17 @@
-# ShellCheck configuration for AI Ops Validated Pattern
+# ShellCheck configuration file
 # https://www.shellcheck.net/wiki/Ignore
 
-# Set default shell
+# Set shell to bash
 shell=bash
 
-# Enable additional checks
-enable=quote-safe-variables
-enable=require-variable-braces
+# Enable all checks by default
+enable=all
 
-# Disable checks with justification
-# disable=SC2034  # Example: Unused variables that are exported
+# External sources
+# Used when scripts source external files
+# source=./common/scripts/pattern-util.sh
 
-# Pattern-specific settings
-# Add any pattern-specific ShellCheck configurations here
+# Additional notes:
+# - We've fixed SC2295 (expansions inside ${..}) in the code
+# - We've fixed SC2126 (grep -c instead of grep|wc -l) in the code
+# - All other ShellCheck warnings have been addressed in the code

@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""
+Top-level convenience script for running the Validated Pattern Converter.
+
+This script provides an easy way to run the converter without navigating
+to the scripts directory or dealing with Python paths.
+"""
+
+import sys
+import os
+from pathlib import Path
+import subprocess
+
+# Add the converter directory to Python path
+script_dir = Path(__file__).parent.resolve()
+converter_dir = script_dir / "scripts" / "validated-pattern-converter"
+
+# Check if virtual environment exists
+venv_dir = converter_dir / "venv"
+venv_python = venv_dir / "bin" / "python"
+
+# If venv exists, use it; otherwise fall back to current Python
+if venv_python.exists():
+    # Replace current process with venv Python running this same script
+    # But only if we're not already using the venv Python
+    if sys.executable != str(venv_python):
+        os.execv(str(venv_python), [str(venv_python), __file__] + sys.argv[1:])
+
+# Add converter to path for imports
+sys.path.insert(0, str(converter_dir))
+
+# Colors for output
+RED = '\033[0;31m'
+GREEN = '\033[0;32m'
+YELLOW = '\033[1;33m'
+BLUE = '\033[0;34m'
+NC = '\033[0m'  # No Color
+
+def print_banner():
+    """Print a nice banner."""
+    print(f"""
+{BLUE}╔════════════════════════════════════════════════════╗
+║        Validated Pattern Converter v2.0            ║
+║    Transform your projects into Red Hat            ║
+║           Validated Patterns                       ║
+╚════════════════════════════════════════════════════╝{NC}
+""")
+
+def check_dependencies():
+    """Check if basic dependencies are available."""
+    try:
+        import click
+        import yaml
+        import jinja2
+        return True
+    except ImportError:
+        return False
+
+def install_dependencies():
+    """Offer to install dependencies."""
+    print(f"\n{YELLOW}Dependencies not found. Would you like to install them?{NC}")
+    print("\nOptions:")
+    print("1. Install with pip (quick)")
+    print("2. Install with Poetry (recommended)")
+    print("3. Skip and exit")
+
+    choice = input("\nEnter choice (1-3): ").strip()
+
+    if choice == "1":
+        print(f"\n{GREEN}Installing dependencies with pip...{NC}")
+        subprocess.run([
+            sys.executable, "-m", "pip", "install", "-r",
+            str(converter_dir / "requirements.txt")
+        ])
+        return True
+    elif choice == "2":
+        print(f"\n{GREEN}Installing with Poetry...{NC}")
+        print("Please run:")
+        print(f"  cd {converter_dir}")
+        print("  poetry install")
+        print("  poetry shell")
+        return False
+    else:
+        return False
+
+def show_quick_help():
+    """Show quick help for common operations."""
+    print(f"\n{GREEN}Quick Examples:{NC}")
+    print("\n1. Convert a local project:")
+    print(f"   {BLUE}./vp-convert my-pattern ./my-project{NC}")
+
+    print("\n2. Convert from GitHub:")
+    print(f"   {BLUE}./vp-convert my-pattern https://github.com/user/repo.git{NC}")
+
+    print("\n3. Analyze only (no conversion):")
+    print(f"   {BLUE}./vp-convert my-pattern ./my-project --analyze-only{NC}")
+
+    print("\n4. Show full help:")
+    print(f"   {BLUE}./vp-convert --help{NC}")
+
+    print(f"\n{YELLOW}Common projects to convert:{NC}")
+    print("  • ./ai-virtual-agent")
+    print("  • ./RAG-Blueprint")
+    print("  • ./multicloud-gitops")
+
+def main():
+    """Main entry point."""
+    # Show banner for interactive use
+    if len(sys.argv) == 1:
+        print_banner()
+        show_quick_help()
+        sys.exit(0)
+
+    # Check for help flags early
+    if "--help" in sys.argv or "-h" in sys.argv:
+        # Just pass through to the converter
+        pass
+    elif len(sys.argv) == 2 and sys.argv[1] in ["help", "?"]:
+        print_banner()
+        show_quick_help()
+        sys.exit(0)
+
+    # Try to import the converter
+    try:
+        from vpconverter.cli import main as converter_main
+    except ImportError as e:
+        print(f"{RED}Error: Could not import converter.{NC}")
+
+        if not check_dependencies():
+            if install_dependencies():
+                # Try again after installation
+                try:
+                    from vpconverter.cli import main as converter_main
+                except ImportError:
+                    print(f"{RED}Still couldn't import after installation.{NC}")
+                    print(f"Try running: cd {converter_dir} && ./install.sh")
+                    sys.exit(1)
+            else:
+                print(f"\n{RED}Cannot run without dependencies.{NC}")
+                print(f"Install manually: cd {converter_dir} && ./install.sh")
+                sys.exit(1)
+        else:
+            print(f"Error details: {e}")
+            sys.exit(1)
+
+    # Handle special shortcuts
+    if len(sys.argv) >= 2:
+        # Shortcut: if first arg doesn't start with -, assume it's pattern name
+        # and we want to run convert command
+        if not sys.argv[1].startswith("-") and sys.argv[1] not in ["convert", "analyze", "validate", "validate-deployment", "list-patterns"]:
+            # Insert 'convert' command
+            sys.argv.insert(1, "convert")
+
+    # Run the converter
+    try:
+        converter_main()
+    except KeyboardInterrupt:
+        print(f"\n{YELLOW}Conversion cancelled.{NC}")
+        sys.exit(130)
+    except Exception as e:
+        print(f"{RED}Error: {e}{NC}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

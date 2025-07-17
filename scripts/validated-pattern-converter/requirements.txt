@@ -1,0 +1,21 @@
+# Core dependencies
+click>=8.1.7
+pyyaml>=6.0.1
+gitpython>=3.1.40
+jinja2>=3.1.2
+colorama>=0.4.6
+rich>=13.7.0
+pydantic>=2.5.0
+typing-extensions>=4.9.0
+
+# Development dependencies (optional)
+# Uncomment the following lines for development
+# pytest>=7.4.3
+# pytest-cov>=4.1.0
+# black>=23.12.0
+# flake8>=6.1.0
+# mypy>=1.7.1
+# isort>=5.13.0
+# pre-commit>=3.6.0
+# pytest-mock>=3.12.0
+# types-pyyaml>=6.0.12.12

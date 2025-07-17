@@ -29,18 +29,18 @@ else
 fi
 
 # Deploy resources if directory exists
-if [ -d "${RESOURCE_DIR}" ]; then
+if [[ -d "${RESOURCE_DIR}" ]]; then
     echo "Deploying resources from ${RESOURCE_DIR}..."
 
     # Count YAML files
     YAML_COUNT=$(find "${RESOURCE_DIR}" -name "*.yaml" -o -name "*.yml" | wc -l)
 
-    if [ "${YAML_COUNT}" -gt 0 ]; then
+    if [[ "${YAML_COUNT}" -gt 0 ]]; then
         echo "Found ${YAML_COUNT} YAML files to deploy"
 
         # Deploy each YAML file
         for yaml_file in "${RESOURCE_DIR}"/*.yaml "${RESOURCE_DIR}"/*.yml; do
-            if [ -f "${yaml_file}" ]; then
+            if [[ -f "${yaml_file}" ]]; then
                 echo "Deploying $(basename "${yaml_file}")..."
                 oc apply -f "${yaml_file}" -n "${NAMESPACE}"
             fi

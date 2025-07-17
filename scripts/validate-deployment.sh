@@ -55,7 +55,7 @@ done
 echo -e "\nChecking ArgoCD applications..."
 if oc get applications -n openshift-gitops &> /dev/null; then
     APPS=$(oc get applications -n openshift-gitops -o name | wc -l)
-    if [ "${APPS}" -gt 0 ]; then
+    if [[ "${APPS}" -gt 0 ]]; then
         log_success "Found ${APPS} ArgoCD applications"
 
         # Show application status
@@ -76,7 +76,7 @@ if oc get crd externalsecrets.external-secrets.io &> /dev/null; then
 
     # Count external secrets
     ES_COUNT=$(oc get externalsecrets -A --no-headers 2>/dev/null | wc -l)
-    if [ "${ES_COUNT}" -gt 0 ]; then
+    if [[ "${ES_COUNT}" -gt 0 ]]; then
         log_success "Found ${ES_COUNT} external secrets"
     else
         log_warn "No external secrets configured"
@@ -101,7 +101,7 @@ fi
 echo -e "\nChecking pattern namespaces..."
 # Get namespaces with ArgoCD labels
 PATTERN_NS=$(oc get namespaces -l argocd.argoproj.io/managed-by=openshift-gitops -o name 2>/dev/null | wc -l)
-if [ "${PATTERN_NS}" -gt 0 ]; then
+if [[ "${PATTERN_NS}" -gt 0 ]]; then
     log_success "Found ${PATTERN_NS} pattern-managed namespaces"
 else
     log_warn "No pattern-managed namespaces found"
@@ -112,7 +112,7 @@ echo -e "\nChecking for common issues..."
 
 # Check if any pods are in error state
 ERROR_PODS=$(oc get pods -A | grep -c -E 'Error|CrashLoopBackOff|ImagePullBackOff' || true)
-if [ "${ERROR_PODS}" -gt 0 ]; then
+if [[ "${ERROR_PODS}" -gt 0 ]]; then
     log_error "Found ${ERROR_PODS} pods in error state"
     echo "Run 'oc get pods -A | grep -v Running' to see details"
     ((ERRORS++))
@@ -122,7 +122,7 @@ fi
 
 # Summary
 echo -e "\n=== Validation Summary ==="
-if [ "${ERRORS}" -eq 0 ]; then
+if [[ "${ERRORS}" -eq 0 ]]; then
     echo -e "${GREEN}✓ Pattern deployment validation passed!${NC}"
     echo ""
     echo "Next steps:"

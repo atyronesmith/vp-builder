@@ -1,0 +1,1 @@
+# Test package for validated pattern converter

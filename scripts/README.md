@@ -2,6 +2,23 @@
 
 This directory contains tools for converting projects into Red Hat Validated Patterns and managing pattern deployments.
 
+## 🆕 Python Converter (Recommended)
+
+A modern Python implementation of the validated pattern converter with enhanced features:
+- Rich terminal UI with progress indicators
+- Better error handling and validation
+- Modular, testable architecture
+- Backward compatible with bash script
+
+### Quick Start
+```bash
+cd scripts/validated-pattern-converter
+./install.sh
+vp-convert convert my-pattern ./source-repo
+```
+
+See [validated-pattern-converter/README.md](validated-pattern-converter/README.md) for full documentation.
+
 ## Scripts Overview
 
 ### 🔄 convert-to-validated-pattern.sh
@@ -31,6 +48,20 @@ Main conversion tool that transforms any OpenShift/Kubernetes project into a val
 - Includes ShellCheck validation
 - Provides conversion report with next steps
 - Cleans up temporary files automatically
+- **NEW**: Automatically detects patterns and applies specific configurations:
+  - AI/ML patterns → GPU operators, model serving, GPU-aware autoscaling
+  - Security patterns → Security operators, network policies, RBAC
+  - Scaling patterns → KEDA, Prometheus, HPA/VPA configurations
+  - Data processing → Kafka operators, pipeline optimizations
+
+### 🐍 convert-to-validated-pattern.py
+Python wrapper providing backward compatibility while using the new Python implementation.
+
+**Usage:**
+```bash
+# Same interface as bash script
+./scripts/convert-to-validated-pattern.py my-pattern ./source-repo myorg
+```
 
 ### 📋 migrate-charts.sh
 Migrates Helm charts from a source repository to the validated pattern structure.
@@ -92,6 +123,7 @@ Deploys AI/ML models to a pattern (specific to AI patterns).
 - Make
 - ShellCheck (for script validation)
 - Access to an OpenShift cluster (for deployment/validation)
+- Python 3.9+ (for Python converter)
 
 ## Installation
 
@@ -114,6 +146,12 @@ brew install shellcheck
 # Linux
 apt-get install shellcheck  # Debian/Ubuntu
 yum install ShellCheck      # RHEL/CentOS
+```
+
+4. Install Python converter (recommended):
+```bash
+cd scripts/validated-pattern-converter
+./install.sh
 ```
 
 ## Workflow Example
@@ -190,6 +228,40 @@ pattern-name/
    - Check OpenShift login: `oc whoami`
    - Verify cluster version: `oc version`
    - Check operator availability
+
+## ShellCheck Configuration
+
+All shell scripts in this repository are validated with ShellCheck and follow best practices for bash scripting.
+
+### Code Standards
+
+All scripts have been updated to follow ShellCheck recommendations:
+- Use `[[ ]]` instead of `[ ]` for tests (more robust in bash)
+- Add `|| true` to commands in process substitution when return value isn't needed
+- Use `${VAR}` syntax for all variable expansions
+- Add `# shellcheck source=/dev/null` before sourcing dynamic files
+
+### Configuration
+
+We use a minimal `.shellcheckrc` file that:
+- Sets shell to bash
+- Enables all checks by default
+- No disabled warnings - all code follows ShellCheck best practices
+
+### Running ShellCheck
+
+```bash
+# Check all scripts
+shellcheck scripts/*.sh
+
+# Check all scripts recursively
+find scripts -name "*.sh" -type f | xargs shellcheck
+
+# Check with specific shell
+shellcheck -s bash scripts/*.sh
+```
+
+All scripts pass ShellCheck with zero warnings or errors.
 
 ## Contributing
 

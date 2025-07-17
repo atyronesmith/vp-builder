@@ -4,18 +4,19 @@ set -euo pipefail
 # Generic Helm chart migration script for validated patterns
 # Usage: ./migrate-charts.sh <source-repo-path> [chart1] [chart2] ...
 
-if [ $# -lt 1 ]; then
+if [[ $# -lt 1 ]]; then
     echo "Usage: $0 <source-repo-path> [chart-names...]"
-    echo "Example: $0 /path/to/source-repo chart1 chart2"
-    echo "If no chart names provided, will search for all Chart.yaml files"
+    echo "Example: $0 /path/to/source-repo"
+    echo "Example: $0 /path/to/source-repo prometheus grafana"
     exit 1
 fi
 
 SOURCE_REPO="$1"
 shift
+SPECIFIC_CHARTS=("$@")
 
 # Validate source repo exists
-if [ ! -d "${SOURCE_REPO}" ]; then
+if [[ ! -d "${SOURCE_REPO}" ]]; then
     echo "Error: Source repository not found: ${SOURCE_REPO}"
     exit 1
 fi
@@ -41,12 +42,12 @@ migrate_chart() {
 }
 
 # If specific charts provided, migrate those
-if [ $# -gt 0 ]; then
-    for chart_name in "$@"; do
+if [[ ${#SPECIFIC_CHARTS[@]} -gt 0 ]]; then
+    for chart_name in "${SPECIFIC_CHARTS[@]}"; do
         # Find Chart.yaml for this chart
         chart_yaml=$(find "${SOURCE_REPO}" -name Chart.yaml -type f | grep "/${chart_name}/Chart.yaml" | head -1)
 
-        if [ -n "${chart_yaml}" ]; then
+        if [[ -n "${chart_yaml}" ]]; then
             migrate_chart "${chart_yaml}"
         else
             echo "Warning: Chart '${chart_name}' not found in ${SOURCE_REPO}"
@@ -59,7 +60,7 @@ else
     # Find all Chart.yaml files
     while IFS= read -r -d '' chart_yaml; do
         migrate_chart "${chart_yaml}"
-    done < <(find "${SOURCE_REPO}" -name Chart.yaml -type f -print0)
+    done < <(find "${SOURCE_REPO}" -name Chart.yaml -type f -print0 || true)
 fi
 
 echo ""
