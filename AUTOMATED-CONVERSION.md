@@ -113,68 +113,16 @@ EOF
 cat > values-global.yaml << EOF
 global:
   pattern: ${PATTERN_NAME}
-  namespace: pattern-namespace
-  targetRevision: main
-  multiSourceConfig:
-    enabled: true
-    clusterGroupChartVersion: 0.9.0
-
   options:
     useCSV: false
     syncPolicy: Automatic
     installPlanApproval: Automatic
 
-  git:
-    provider: github
-    account: ${GITHUB_ORG}
-    email: devops@${GITHUB_ORG}.com
-    dev_revision: main
-
 main:
   clusterGroupName: hub
   multiSourceConfig:
     enabled: true
-
-clusterGroup:
-  name: hub
-  isHubCluster: true
-
-  namespaces:
-    - open-cluster-management
-    - openshift-gitops
-    - external-secrets
-    - vault
-    # TODO: Add application namespaces
-
-  subscriptions:
-    gitops:
-      namespace: openshift-gitops
-      channel: latest
-      source: redhat-operators
-
-    acm:
-      namespace: open-cluster-management
-      channel: release-2.10
-      source: redhat-operators
-
-  applications:
-    acm:
-      name: acm
-      namespace: open-cluster-management
-      chart: acm
-      repoURL: https://charts.validatedpatterns.io
-      targetRevision: 0.1.0
-      valuesFile: values-hub.yaml
-      enabled: true
-
-    vault:
-      name: vault
-      namespace: vault
-      chart: vault
-      repoURL: https://charts.validatedpatterns.io
-      targetRevision: 0.1.0
-      valuesFile: values-hub-vault.yaml
-      enabled: true
+    clusterGroupChartVersion: "0.9.*"
 EOF
 
 # values-hub.yaml
@@ -360,8 +308,8 @@ spec:
       selfHeal: true
 {{- end }}
 EOF
-        # Replace CHARTNAME placeholder
-        sed -i "s/CHARTNAME/$CHART_NAME/g" "charts/hub/$CHART_NAME/templates/application.yaml"
+        # Replace CHARTNAME placeholder - works on both macOS and Linux
+        sed -i'' -e "s/CHARTNAME/$CHART_NAME/g" "charts/hub/$CHART_NAME/templates/application.yaml"
 
         ((CHARTS_FOUND++))
     done < <(find "$SOURCE_REPO" -name "Chart.yaml" -type f -print0 2>/dev/null)

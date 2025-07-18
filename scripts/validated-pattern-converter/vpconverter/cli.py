@@ -140,7 +140,7 @@ def convert(
 
         # Phase 2: Structure Creation
         console.print("\n[bold yellow]=== Phase 2: Structure Creation ===[/bold yellow]")
-        generator = PatternGenerator(pattern_name, pattern_dir, github_org)
+        generator = PatternGenerator(pattern_name, pattern_dir, github_org, source_dir=source_path)
         generator.generate(analysis_result)
 
         # Phase 3: Migration

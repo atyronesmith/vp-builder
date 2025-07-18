@@ -9,6 +9,8 @@ original/
 AIops/
 multicloud-gitops/
 AI-Observability-Metrics-Summarizer/
+RAG-Blueprint/
+ai-virtual-assistant/
 
 # Common patterns for development
 *.swp
@@ -38,3 +40,6 @@ env/
 Thumbs.db
 .Spotlight-V100
 .Trashes
+# Generated pattern directories
+ai-virtual-agent/
+rag-validated-pattern/

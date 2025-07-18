@@ -127,13 +127,19 @@ class PatternValidator:
             "pattern-metadata.yaml",
             "values-global.yaml",
             "values-hub.yaml",
-            ".gitignore"
+            ".gitignore",
+            "charts/hub/clustergroup/Chart.yaml",  # Critical: ClusterGroup chart
+            "charts/hub/clustergroup/values.yaml",
+            "bootstrap/hub-bootstrap.yaml"  # Bootstrap application
         ]
 
         for file_path in required_files:
             full_path = self.pattern_dir / file_path
             if not full_path.exists():
-                self.result.add_error(f"Missing required file: {file_path}")
+                if "clustergroup" in file_path:
+                    self.result.add_error(f"CRITICAL: Missing ClusterGroup chart file: {file_path}")
+                else:
+                    self.result.add_error(f"Missing required file: {file_path}")
             else:
                 self.result.add_info(f"File exists: {file_path}")
 
@@ -201,21 +207,25 @@ class PatternValidator:
             self.result.add_warning(f"Could not validate chart {chart_dir.name}: {e}")
 
     def _validate_values_files(self) -> None:
-        """Validate values files configuration."""
+        """Validate the structure of values files."""
         # Check values-global.yaml
         global_values = self.pattern_dir / "values-global.yaml"
         if global_values.exists():
             try:
                 data = read_yaml(global_values)
 
-                # Check required keys
+                # Check required sections
                 if "global" not in data:
                     self.result.add_error("values-global.yaml missing 'global' section")
-                elif "pattern" not in data["global"]:
-                    self.result.add_error("values-global.yaml missing 'global.pattern'")
+                else:
+                    if "pattern" not in data["global"]:
+                        self.result.add_error("values-global.yaml missing 'global.pattern'")
 
                 if "main" not in data:
-                    self.result.add_warning("values-global.yaml missing 'main' section")
+                    self.result.add_error("values-global.yaml missing 'main' section")
+                else:
+                    if "clusterGroupName" not in data["main"]:
+                        self.result.add_error("values-global.yaml missing 'main.clusterGroupName'")
 
             except Exception as e:
                 self.result.add_error(f"Could not parse values-global.yaml: {e}")
@@ -244,8 +254,36 @@ class PatternValidator:
                             if required_ns not in namespaces:
                                 self.result.add_warning(f"Missing recommended namespace: {required_ns}")
 
+                    # Validate applications structure
+                    if "applications" in cluster_group:
+                        apps = cluster_group["applications"]
+                        for app_name, app_config in apps.items():
+                            if not isinstance(app_config, dict):
+                                self.result.add_error(f"Invalid application config for {app_name}")
+                            else:
+                                # Check required app fields
+                                required_app_fields = ["name", "namespace", "project", "path"]
+                                for field in required_app_fields:
+                                    if field not in app_config:
+                                        self.result.add_error(
+                                            f"Application {app_name} missing required field: {field}"
+                                        )
+
             except Exception as e:
                 self.result.add_error(f"Could not parse values-hub.yaml: {e}")
+
+        # Validate pattern-metadata.yaml for products
+        metadata_file = self.pattern_dir / "pattern-metadata.yaml"
+        if metadata_file.exists():
+            try:
+                data = read_yaml(metadata_file)
+                if "products" not in data:
+                    self.result.add_error("pattern-metadata.yaml missing 'products' list (requirement #3)")
+                else:
+                    if not isinstance(data["products"], list) or len(data["products"]) == 0:
+                        self.result.add_error("pattern-metadata.yaml must list at least one product")
+            except Exception as e:
+                self.result.add_error(f"Could not parse pattern-metadata.yaml: {e}")
 
     def _validate_scripts(self) -> None:
         """Validate shell scripts."""

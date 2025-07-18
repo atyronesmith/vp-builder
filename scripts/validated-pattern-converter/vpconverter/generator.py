@@ -14,8 +14,9 @@ from jinja2 import Environment, BaseLoader
 import yaml
 
 from .analyzer import AnalysisResult, HelmChart
-from .config import PATTERN_DIRS, VERSION
+from .config import PATTERN_DIRS, VERSION, CLUSTERGROUP_VERSION, DEFAULT_PRODUCTS
 from .pattern_configurator import PatternConfigurator
+from .product_detector import ProductDetector
 from .templates import (
     GITIGNORE_TEMPLATE,
     ANSIBLE_CFG_TEMPLATE,
@@ -31,7 +32,13 @@ from .templates import (
     WRAPPER_VALUES_TEMPLATE,
     ARGOCD_APPLICATION_TEMPLATE,
     VALIDATION_SCRIPT_TEMPLATE,
-    CONVERSION_REPORT_TEMPLATE
+    CONVERSION_REPORT_TEMPLATE,
+    CLUSTERGROUP_CHART_TEMPLATE,
+    CLUSTERGROUP_VALUES_TEMPLATE,
+    BOOTSTRAP_APPLICATION_TEMPLATE,
+    PATTERN_INSTALL_SCRIPT_TEMPLATE,
+    MAKEFILE_BOOTSTRAP_TEMPLATE,
+    IMPERATIVE_JOB_TEMPLATE
 )
 from .utils import (
     log_info, log_success, log_error, log_warn,
@@ -42,11 +49,12 @@ from .utils import (
 class PatternGenerator:
     """Generates validated pattern structure and files."""
 
-    def __init__(self, pattern_name: str, pattern_dir: Path, github_org: str = "your-org"):
+    def __init__(self, pattern_name: str, pattern_dir: Path, github_org: str = "your-org", source_dir: Optional[Path] = None):
         """Initialize generator with pattern configuration."""
         self.pattern_name = pattern_name
         self.pattern_dir = pattern_dir
         self.github_org = github_org
+        self.source_dir = source_dir
         self.env = Environment(loader=BaseLoader())
 
     def generate(self, analysis_result: AnalysisResult) -> None:
@@ -65,6 +73,14 @@ class PatternGenerator:
             # Generate values files
             status.update("Generating values files...")
             self._generate_values_files(analysis_result)
+
+            # Generate ClusterGroup chart (CRITICAL)
+            status.update("Generating ClusterGroup chart...")
+            self._generate_clustergroup_chart()
+
+            # Generate bootstrap application
+            status.update("Generating bootstrap mechanism...")
+            self._generate_bootstrap_files()
 
             # Apply pattern-specific configurations
             status.update("Applying pattern-specific configurations...")
@@ -102,14 +118,44 @@ class PatternGenerator:
         # ansible/site.yaml
         self._write_file("ansible/site.yaml", ANSIBLE_SITE_TEMPLATE)
 
-        # Makefile
-        self._write_file("Makefile", MAKEFILE_TEMPLATE)
+        # Makefile - use bootstrap-enabled version
+        self._write_file("Makefile", MAKEFILE_BOOTSTRAP_TEMPLATE)
 
-        # pattern-metadata.yaml
+        # pattern-metadata.yaml with products
+        products = list(DEFAULT_PRODUCTS)
+
+        # Use product detector to find pattern-specific products
+        detector = ProductDetector()
+        detected_products = []
+
+        # Detect from Helm charts
+        for chart in analysis_result.helm_charts:
+            # Use the chart path directly from analysis result
+            if Path(chart.path).exists():
+                detected = detector.detect_from_path(Path(chart.path))
+                detected_products.extend(detected)
+
+        # Detect from any other YAML files
+        for yaml_file in analysis_result.yaml_files:
+            if yaml_file.exists():
+                detected = detector.detect_from_path(yaml_file)
+                detected_products.extend(detected)
+
+        # Merge detected products with defaults
+        final_products = detector.merge_products(products, detected_products)
+
+        # Log detected products
+        if detected_products:
+            log_info(f"  ✓ Detected {len(detected_products)} additional products")
+            for product in detected_products:
+                confidence_marker = "" if product.confidence == "high" else f" ({product.confidence} confidence)"
+                log_info(f"    - {product.name}: {product.version}{confidence_marker}")
+
         context = {
             "pattern_name": self.pattern_name,
             "github_org": self.github_org,
-            "pattern_dir": self.pattern_dir.name
+            "pattern_dir": self.pattern_dir.name,
+            "products": final_products
         }
         self._render_and_write("pattern-metadata.yaml", PATTERN_METADATA_TEMPLATE, context)
 
@@ -261,14 +307,90 @@ class PatternGenerator:
             context
         )
 
-        # Generate application template
-        self._render_and_write(
-            f"charts/{site}/{chart.name}/templates/application.yaml",
-            ARGOCD_APPLICATION_TEMPLATE,
-            context
+        # Generate namespace template instead of application
+        namespace_template = f"""\
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {chart.name}
+  labels:
+    argocd.argoproj.io/managed-by: openshift-gitops
+  annotations:
+    argocd.argoproj.io/sync-wave: "100"
+"""
+        self._write_file(
+            f"charts/{site}/{chart.name}/templates/namespace.yaml",
+            namespace_template
         )
 
         log_info(f"  ✓ Created wrapper chart: charts/{site}/{chart.name}/")
+
+    def _generate_clustergroup_chart(self) -> None:
+        """Generate the ClusterGroup chart that serves as the pattern entry point."""
+        chart_dir = self.pattern_dir / "charts" / "hub" / "clustergroup"
+        ensure_directory(chart_dir)
+        ensure_directory(chart_dir / "templates")
+
+        # Generate Chart.yaml
+        context = {
+            "pattern_name": self.pattern_name,
+            "clustergroup_version": CLUSTERGROUP_VERSION
+        }
+        self._render_and_write(
+            "charts/hub/clustergroup/Chart.yaml",
+            CLUSTERGROUP_CHART_TEMPLATE,
+            context
+        )
+
+        # Generate values.yaml
+        context = {
+            "pattern_name": self.pattern_name,
+            "git_repo": f"https://github.com/{self.github_org}/{self.pattern_dir.name}",
+            "target_revision": "main"
+        }
+        self._render_and_write(
+            "charts/hub/clustergroup/values.yaml",
+            CLUSTERGROUP_VALUES_TEMPLATE,
+            context
+        )
+
+        # Create .gitkeep in templates directory
+        (chart_dir / "templates" / ".gitkeep").touch()
+
+        log_info("  ✓ Created ClusterGroup chart: charts/hub/clustergroup/")
+
+    def _generate_bootstrap_files(self) -> None:
+        """Generate bootstrap application and scripts."""
+        # Create bootstrap directory
+        bootstrap_dir = self.pattern_dir / "bootstrap"
+        ensure_directory(bootstrap_dir)
+
+        # Generate bootstrap application
+        context = {
+            "pattern_name": self.pattern_name,
+            "git_repo": f"https://github.com/{self.github_org}/{self.pattern_dir.name}",
+            "target_revision": "main"
+        }
+        self._render_and_write(
+            "bootstrap/hub-bootstrap.yaml",
+            BOOTSTRAP_APPLICATION_TEMPLATE,
+            context
+        )
+
+        # Generate bootstrap script
+        context = {
+            "pattern_name": self.pattern_name
+        }
+        script_path = self.pattern_dir / "scripts" / "pattern-bootstrap.sh"
+        self._render_and_write(
+            "scripts/pattern-bootstrap.sh",
+            PATTERN_INSTALL_SCRIPT_TEMPLATE,
+            context
+        )
+        # Make script executable
+        os.chmod(script_path, 0o755)
+
+        log_info("  ✓ Created bootstrap mechanism")
 
     def _write_file(self, relative_path: str, content: str) -> None:
         """Write content to a file."""

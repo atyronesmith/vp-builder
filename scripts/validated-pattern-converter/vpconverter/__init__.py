@@ -12,10 +12,14 @@ from .analyzer import PatternAnalyzer
 from .generator import PatternGenerator
 from .migrator import HelmMigrator
 from .validator import PatternValidator
+from .rules_engine import RuleEngine, DetectionRule, PatternDefinition
 
 __all__ = [
     "PatternAnalyzer",
     "PatternGenerator",
     "HelmMigrator",
     "PatternValidator",
+    "RuleEngine",
+    "DetectionRule",
+    "PatternDefinition",
 ]

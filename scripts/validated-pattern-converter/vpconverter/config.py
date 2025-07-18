@@ -18,7 +18,8 @@ PATTERN_DIRS = [
     "migrated-charts",
     "overrides",
     "scripts",
-    "tests/interop"
+    "tests/interop",
+    "bootstrap"
 ]
 
 # Site patterns for detection
@@ -87,6 +88,37 @@ COLORS = {
     "BLUE": "\033[0;34m",
     "NC": "\033[0m"  # No Color
 }
+
+# ClusterGroup and Pattern Install versions
+CLUSTERGROUP_VERSION = "0.9.*"
+PATTERN_INSTALL_VERSION = "0.0.*"
+
+# Default products for validated patterns
+DEFAULT_PRODUCTS = [
+    {
+        "name": "Red Hat OpenShift Container Platform",
+        "version": "4.12+",
+        "required": True
+    },
+    {
+        "name": "Red Hat OpenShift GitOps",
+        "version": "1.11.x",
+        "operator": {
+            "channel": "latest",
+            "source": "redhat-operators"
+        },
+        "required": True
+    },
+    {
+        "name": "Red Hat Advanced Cluster Management",
+        "version": "2.10.x",
+        "operator": {
+            "channel": "release-2.10",
+            "source": "redhat-operators"
+        },
+        "required": False
+    }
+]
 
 # Logging configuration
 LOGGING_CONFIG = {

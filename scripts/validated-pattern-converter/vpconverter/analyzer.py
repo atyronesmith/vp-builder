@@ -31,6 +31,15 @@ except ImportError:
     if TYPE_CHECKING:
         from .enhanced_analyzer import EnhancedChartAnalysis
 
+# Import makefile analyzer
+try:
+    from .makefile_analyzer import MakefileAnalyzer, MakefileAnalysis
+    MAKEFILE_ANALYSIS_AVAILABLE = True
+except ImportError:
+    MAKEFILE_ANALYSIS_AVAILABLE = False
+    if TYPE_CHECKING:
+        from .makefile_analyzer import MakefileAnalysis
+
 
 class PatternAnalyzer:
     """Analyzes source repositories for validated pattern conversion."""
@@ -158,6 +167,41 @@ class PatternAnalyzer:
 
                 except Exception as e:
                     log_warn(f"    Enhanced analysis failed: {e}")
+
+                        # Check for Makefile in chart directory and parent directories
+            if MAKEFILE_ANALYSIS_AVAILABLE:
+                # Check in chart directory first
+                makefile_path = chart_dir / "Makefile"
+
+                # If not found, check parent directories (up to 4 levels)
+                if not makefile_path.exists():
+                    parent = chart_dir.parent
+                    for _ in range(4):  # Check up to 4 parent levels
+                        parent_makefile = parent / "Makefile"
+                        if parent_makefile.exists():
+                            makefile_path = parent_makefile
+                            break
+                        parent = parent.parent
+                        if parent == parent.parent:  # Reached root
+                            break
+
+                if makefile_path.exists():
+                    try:
+                        log_info(f"    Found Makefile at: {relative_path(makefile_path, self.source_path)}")
+                        log_info(f"    Analyzing deployment process...")
+                        makefile_analyzer = MakefileAnalyzer(makefile_path)
+                        makefile_results = makefile_analyzer.analyze(verbose)
+                        chart.makefile_analysis = makefile_results
+
+                        if makefile_results.has_install_target:
+                            log_info(f"      ✓ Install process detected")
+                        if makefile_results.has_uninstall_target:
+                            log_info(f"      ✓ Uninstall process detected")
+                        if makefile_results.detected_tools:
+                            log_info(f"      Tools: {', '.join(sorted(makefile_results.detected_tools))}")
+
+                    except Exception as e:
+                        log_warn(f"    Makefile analysis failed: {e}")
 
             self.result.helm_charts.append(chart)
 
@@ -381,3 +425,42 @@ class PatternAnalyzer:
                             console.print("      Dependencies by type:")
                             for dep_type, deps in sorted(dep_types.items()):
                                 console.print(f"        • {dep_type}: {', '.join(deps)}")
+
+                # Show Makefile analysis if available
+                if hasattr(chart, 'makefile_analysis') and chart.makefile_analysis:
+                    makefile = chart.makefile_analysis
+                    console.print("\n    [magenta]Makefile Analysis:[/magenta]")
+                    console.print(f"      Targets: {len(makefile.targets)}")
+                    if makefile.detected_tools:
+                        console.print(f"      Tools: {', '.join(sorted(makefile.detected_tools))}")
+                    
+                    # Show variable expansion summary if available
+                    if makefile.expansion_summary:
+                        summary = makefile.expansion_summary
+                        console.print(f"      Variable expansions: {summary.get('total_expansions', 0)}")
+                        
+                        vars_used = summary.get('variables_used', [])
+                        if vars_used:
+                            console.print(f"      Variables used: {', '.join(vars_used[:5])}")
+                            if len(vars_used) > 5:
+                                console.print(f"        ... and {len(vars_used) - 5} more")
+                        
+                        funcs_used = summary.get('functions_used', [])
+                        if funcs_used:
+                            console.print(f"      Functions used: {', '.join(funcs_used)}")
+                        
+                        unexpanded = summary.get('unexpanded_vars', [])
+                        if unexpanded:
+                            console.print(f"      [yellow]Unexpanded: {', '.join(unexpanded[:3])}[/yellow]")
+
+                    # Show install flow diagram
+                    if makefile.has_install_target:
+                        if MAKEFILE_ANALYSIS_AVAILABLE:
+                            flow_diagram = MakefileAnalyzer._generate_flow_diagram_from_analysis(makefile, 'install')
+                            console.print(flow_diagram)
+
+                    # Show uninstall flow diagram
+                    if makefile.has_uninstall_target:
+                        if MAKEFILE_ANALYSIS_AVAILABLE:
+                            flow_diagram = MakefileAnalyzer._generate_flow_diagram_from_analysis(makefile, 'uninstall')
+                            console.print(flow_diagram)

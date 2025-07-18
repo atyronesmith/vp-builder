@@ -3,7 +3,7 @@ Enhanced Helm chart analyzer with pattern detection capabilities.
 
 This module provides deep analysis of Helm charts including:
 - Template parsing and resource extraction
-- Architecture pattern detection
+- Architecture pattern detection using rule engine
 - Component identification
 - Security analysis
 """
@@ -14,8 +14,9 @@ from typing import List, Dict, Any, Optional
 import yaml
 import re
 
-from .models import HelmChart, AnalysisResult
+from .models import HelmChart, AnalysisResult, ArchitecturePattern
 from .utils import log_info, log_warn, console, read_yaml
+from .rules_engine import RuleEngine, PatternDefinition, DetectionRule, load_patterns
 
 
 @dataclass
@@ -27,15 +28,6 @@ class ChartComponent:
     ports: List[int] = field(default_factory=list)
     description: str = ""
     source_template: Optional[str] = None
-
-
-@dataclass
-class ArchitecturePattern:
-    """Represents a detected architecture pattern."""
-    name: str
-    confidence: float  # 0.0 to 1.0
-    evidence: List[str] = field(default_factory=list)
-    description: str = ""
 
 
 @dataclass
@@ -57,6 +49,8 @@ class EnhancedHelmAnalyzer:
         self.templates_path = chart_path / "templates"
         self.templates: List[Dict[str, Any]] = []
         self.values: Dict[str, Any] = {}
+        self.rule_engine = RuleEngine()
+        self.pattern_definitions = load_patterns()
 
     def analyze(self) -> EnhancedChartAnalysis:
         """Perform enhanced analysis of the Helm chart."""
@@ -224,318 +218,166 @@ class EnhancedHelmAnalyzer:
         return resources
 
     def _detect_patterns(self, components: List[ChartComponent], resources: Dict[str, List[str]]) -> List[ArchitecturePattern]:
-        """Detect architecture patterns."""
-        patterns = []
+        """Detect architecture patterns using rule-based engine."""
+        detected_patterns = []
 
-        # AI/ML Pattern Detection
-        ai_pattern = self._detect_ai_ml_pattern(components)
-        if ai_pattern.confidence > 0.3:
-            patterns.append(ai_pattern)
+        # Prepare analysis context
+        context = self._build_analysis_context(components, resources)
 
-        # Microservices Pattern
-        microservices = self._detect_microservices_pattern(resources)
-        if microservices.confidence > 0.3:
-            patterns.append(microservices)
+        # Process each pattern definition
+        for pattern_def in self.pattern_definitions:
+            confidence = 0.0
+            evidence = []
 
-        # Data Processing Pattern
-        data_pattern = self._detect_data_pattern(components)
-        if data_pattern.confidence > 0.3:
-            patterns.append(data_pattern)
+            # Apply each rule in the pattern
+            for rule in pattern_def.rules:
+                rule_match, rule_evidence = self._apply_rule(rule, context)
+                if rule_match:
+                    confidence += rule.confidence_boost
+                    evidence.extend(rule_evidence)
 
-        # Deployment Patterns
-        deployment_pattern = self._detect_deployment_patterns()
-        if deployment_pattern.confidence > 0.3:
-            patterns.append(deployment_pattern)
+            # Cap confidence at 1.0
+            confidence = min(confidence, 1.0)
 
-        # UI Patterns
-        ui_pattern = self._detect_ui_patterns()
-        if ui_pattern.confidence > 0.3:
-            patterns.append(ui_pattern)
+            # Only include patterns that meet minimum confidence
+            if confidence >= pattern_def.min_confidence:
+                pattern = ArchitecturePattern(
+                    name=pattern_def.name,
+                    confidence=confidence,
+                    evidence=evidence,
+                    description=pattern_def.description
+                )
+                detected_patterns.append(pattern)
 
-        # Cloud-Native Patterns
-        cloud_pattern = self._detect_cloud_native_patterns()
-        if cloud_pattern.confidence > 0.3:
-            patterns.append(cloud_pattern)
+        # Sort by confidence (highest first)
+        detected_patterns.sort(key=lambda p: p.confidence, reverse=True)
 
-        return patterns
+        return detected_patterns
 
-    def _detect_ai_ml_pattern(self, components: List[ChartComponent]) -> ArchitecturePattern:
-        """Detect AI/ML patterns."""
+    def _build_analysis_context(self, components: List[ChartComponent], resources: Dict[str, List[str]]) -> Dict[str, Any]:
+        """Build a comprehensive context for rule evaluation"""
+        # Extract dependencies
+        dependencies = []
+        for dep in self.values.get('dependencies', []):
+            dependencies.append(dep.get('name', ''))
+        for comp in components:
+            if comp.type.startswith('dependency'):
+                dependencies.append(comp.name)
+
+        # Extract all images
+        images = []
+        for comp in components:
+            if comp.image:
+                images.append(comp.image)
+
+        # Count services
+        service_count = len(resources.get('Service', []))
+
+        # Extract ports
+        ports = []
+        for comp in components:
+            if comp.ports:
+                ports.extend(comp.ports)
+
+        # Build context
+        return {
+            'chart_name': self.chart_path.name,
+            'chart_yaml': read_yaml(self.chart_path / "Chart.yaml"),
+            'values': self.values,
+            'templates': self.templates,
+            'components': components,
+            'resources': resources,
+            'dependencies': dependencies,
+            'images': images,
+            'service_count': service_count,
+            'ports': ports,
+            'content': str(self.templates) + str(self.values)  # For content searches
+        }
+
+    def _apply_rule(self, rule: DetectionRule, context: Dict[str, Any]) -> tuple[bool, List[str]]:
+        """Apply a single detection rule and return (matched, evidence_list)"""
         evidence = []
-        confidence = 0.0
 
-        # Expanded AI/ML keywords
-        ai_keywords = ['llm', 'llama', 'gpt', 'bert', 'transformer', 'pytorch',
-                      'tensorflow', 'mlflow', 'model', 'inference', 'embedding',
-                      'vector', 'rag', 'retrieval', 'augmented', 'ollama', 'llamastack']
+        if rule.type == "dependency":
+            for dep in context['dependencies']:
+                matches = self.rule_engine.match(dep, rule.match_value, rule.match_mode, rule.case_sensitive)
+                for match in matches:
+                    evidence.append(rule.evidence_template.format(match=match))
 
-        # Check components
-        for comp in components:
-            comp_str = f"{comp.name} {comp.description} {comp.image or ''}".lower()
-            for keyword in ai_keywords:
-                if keyword in comp_str:
-                    evidence.append(f"AI/ML component: {comp.name} (contains '{keyword}')")
-                    confidence += 0.3
-                    break
+        elif rule.type == "kind":
+            kinds = [t.get('kind', '') for t in context['templates']]
+            for kind in kinds:
+                matches = self.rule_engine.match(kind, rule.match_value, rule.match_mode, rule.case_sensitive)
+                for match in matches:
+                    evidence.append(rule.evidence_template.format(match=match))
 
-        # Check for vector databases
-        vector_dbs = ['pgvector', 'chroma', 'pinecone', 'weaviate', 'qdrant', 'milvus']
-        for comp in components:
-            if any(db in str(comp).lower() for db in vector_dbs):
-                evidence.append(f"Vector database: {comp.name}")
-                confidence += 0.4
+        elif rule.type == "image":
+            for image in context['images']:
+                matches = self.rule_engine.match(image, rule.match_value, rule.match_mode, rule.case_sensitive)
+                for match in matches:
+                    evidence.append(rule.evidence_template.format(match=match))
 
-        # Check values for GPU resources
-        if 'resources' in str(self.values).lower() and 'gpu' in str(self.values).lower():
-            evidence.append("GPU resources configured")
-            confidence += 0.3
+        elif rule.type == "content":
+            matches = self.rule_engine.match(context['content'], rule.match_value, rule.match_mode, rule.case_sensitive)
+            for match in matches:
+                evidence.append(rule.evidence_template.format(match=match))
 
-        # Enhanced RAG pattern detection
-        chart_name = self.chart_path.name.lower()
-        if 'rag' in chart_name:
-            evidence.append("RAG architecture (chart name indicates RAG)")
-            confidence += 0.5
-        else:
-            # Check for RAG indicators in templates and values
-            rag_indicators = ['retrieval', 'augmented', 'generation', 'knowledge', 'documents']
-            template_content = str(self.templates).lower()
-            values_content = str(self.values).lower()
+        elif rule.type == "api_version":
+            api_versions = [t.get('apiVersion', '') for t in context['templates']]
+            for api_version in api_versions:
+                matches = self.rule_engine.match(api_version, rule.match_value, rule.match_mode, rule.case_sensitive)
+                for match in matches:
+                    evidence.append(rule.evidence_template.format(match=match))
 
-            rag_matches = sum(1 for indicator in rag_indicators
-                            if indicator in template_content or indicator in values_content)
-            if rag_matches >= 3:
-                evidence.append("RAG (Retrieval-Augmented Generation) pattern detected")
-                confidence += 0.4
+        elif rule.type == "service_count":
+            if rule.match_mode == "greater_than" and context['service_count'] > rule.match_value:
+                evidence.append(rule.evidence_template.format(count=context['service_count']))
 
-        # Streamlit UI detection (common for AI demos)
-        if 'streamlit' in str(self.values).lower() or 'streamlit' in str(self.templates).lower():
-            evidence.append("Streamlit-based AI interface")
-            confidence += 0.2
+        elif rule.type == "chart_name":
+            matches = self.rule_engine.match(context['chart_name'], rule.match_value, rule.match_mode, rule.case_sensitive)
+            for match in matches:
+                evidence.append(rule.evidence_template.format(match=match))
 
-        return ArchitecturePattern(
-            name="AI/ML Pipeline",
-            confidence=min(confidence, 1.0),
-            evidence=evidence,
-            description="Machine learning or AI capabilities detected"
-        )
+        elif rule.type == "port":
+            for port in context['ports']:
+                if isinstance(rule.match_value, list) and port in rule.match_value:
+                    evidence.append(rule.evidence_template.format(match=port))
+
+        elif rule.type == "annotation":
+            for template in context['templates']:
+                annotations = template.get('metadata', {}).get('annotations', {})
+                for annotation_key in annotations.keys():
+                    matches = self.rule_engine.match(annotation_key, rule.match_value, rule.match_mode, rule.case_sensitive)
+                    for match in matches:
+                        evidence.append(rule.evidence_template.format(match=match))
+
+        return len(evidence) > 0, evidence
+
+    # Remove old pattern detection methods as they're replaced by rule engine
+    def _detect_ai_ml_pattern(self, components: List[ChartComponent]) -> ArchitecturePattern:
+        """DEPRECATED: Use rule-based detection instead"""
+        # This method is kept for backward compatibility but delegates to rule engine
+        return ArchitecturePattern(name="AI/ML Pipeline", confidence=0.0, evidence=[], description="Use rule engine")
 
     def _detect_microservices_pattern(self, resources: Dict[str, List[str]]) -> ArchitecturePattern:
-        """Detect microservices patterns."""
-        evidence = []
-        confidence = 0.0
-
-        # Multiple services indicate microservices
-        service_count = len(resources.get('Service', []))
-        if service_count > 3:
-            evidence.append(f"Multiple services ({service_count})")
-            confidence += 0.3
-
-        # Check for API gateway/ingress
-        if 'Ingress' in resources or 'Route' in resources:
-            evidence.append("API Gateway/Ingress present")
-            confidence += 0.3
-
-        # Service mesh indicators
-        for template in self.templates:
-            template_str = str(template).lower()
-            if any(mesh in template_str for mesh in ['istio', 'linkerd', 'consul']):
-                evidence.append("Service mesh detected")
-                confidence += 0.4
-                break
-
-        return ArchitecturePattern(
-            name="Microservices Architecture",
-            confidence=min(confidence, 1.0),
-            evidence=evidence,
-            description="Distributed service architecture"
-        )
+        """DEPRECATED: Use rule-based detection instead"""
+        return ArchitecturePattern(name="Microservices", confidence=0.0, evidence=[], description="Use rule engine")
 
     def _detect_data_pattern(self, components: List[ChartComponent]) -> ArchitecturePattern:
-        """Detect data processing patterns."""
-        evidence = []
-        confidence = 0.0
-
-        # Data processing keywords
-        data_keywords = ['kafka', 'spark', 'flink', 'airflow', 'etl', 'pipeline',
-                        'stream', 'batch', 'queue', 'pubsub']
-
-        for comp in components:
-            comp_str = str(comp).lower()
-            for keyword in data_keywords:
-                if keyword in comp_str:
-                    evidence.append(f"Data processing: {comp.name}")
-                    confidence += 0.4
-                    break
-
-        # Check for databases
-        db_keywords = ['postgres', 'mysql', 'mongodb', 'redis', 'cassandra']
-        db_count = sum(1 for comp in components
-                      if any(db in str(comp).lower() for db in db_keywords))
-
-        if db_count > 1:
-            evidence.append(f"Multiple data stores ({db_count})")
-            confidence += 0.3
-
-        return ArchitecturePattern(
-            name="Data Processing Pipeline",
-            confidence=min(confidence, 1.0),
-            evidence=evidence,
-            description="Data pipeline or ETL workflow"
-        )
+        """DEPRECATED: Use rule-based detection instead"""
+        return ArchitecturePattern(name="Data Processing", confidence=0.0, evidence=[], description="Use rule engine")
 
     def _detect_deployment_patterns(self) -> ArchitecturePattern:
-        """Detect deployment and lifecycle patterns."""
-        evidence = []
-        confidence = 0.0
-
-        # Container registry patterns
-        registries = set()
-        for template in self.templates:
-            if template.get('kind') == 'Deployment':
-                containers = template.get('spec', {}).get('template', {}).get('spec', {}).get('containers', [])
-                for container in containers:
-                    image = container.get('image', '')
-                    if image and '/' in image:
-                        registry = image.split('/')[0]
-                        registries.add(registry)
-
-        if registries:
-            evidence.append(f"Container registries: {', '.join(registries)}")
-            confidence += 0.1
-
-        # Check for private registries
-        private_indicators = ['quay.io', 'gcr.io', 'registry.redhat.io', 'localhost']
-        for registry in registries:
-            if any(indicator in registry for indicator in private_indicators):
-                evidence.append("Private/Enterprise container registry")
-                confidence += 0.2
-                break
-
-        # Health checks
-        health_check_types = set()
-        for template in self.templates:
-            if template.get('kind') == 'Deployment':
-                containers = template.get('spec', {}).get('template', {}).get('spec', {}).get('containers', [])
-                for container in containers:
-                    if 'livenessProbe' in container:
-                        health_check_types.add('liveness')
-                    if 'readinessProbe' in container:
-                        health_check_types.add('readiness')
-                    if 'startupProbe' in container:
-                        health_check_types.add('startup')
-
-        if health_check_types:
-            evidence.append(f"Health checks: {', '.join(health_check_types)}")
-            confidence += 0.3
-
-        # Rolling update strategy
-        for template in self.templates:
-            if template.get('kind') == 'Deployment':
-                strategy = template.get('spec', {}).get('strategy', {})
-                if strategy.get('type') == 'RollingUpdate':
-                    evidence.append("Rolling update strategy")
-                    confidence += 0.2
-
-        return ArchitecturePattern(
-            name="Deployment Patterns",
-            confidence=min(confidence, 1.0),
-            evidence=evidence,
-            description="Container deployment and lifecycle management"
-        )
+        """DEPRECATED: Use rule-based detection instead"""
+        return ArchitecturePattern(name="Deployment", confidence=0.0, evidence=[], description="Use rule engine")
 
     def _detect_ui_patterns(self) -> ArchitecturePattern:
-        """Detect user interface patterns."""
-        evidence = []
-        confidence = 0.0
-
-        # Frontend frameworks
-        ui_frameworks = ['streamlit', 'react', 'angular', 'vue', 'flask', 'django', 'fastapi', 'nginx']
-
-        # Check in container images
-        for template in self.templates:
-            if template.get('kind') == 'Deployment':
-                containers = template.get('spec', {}).get('template', {}).get('spec', {}).get('containers', [])
-                for container in containers:
-                    image = container.get('image', '').lower()
-                    for framework in ui_frameworks:
-                        if framework in image:
-                            evidence.append(f"UI framework: {framework}")
-                            confidence += 0.3
-
-        # Check values for UI configurations
-        values_str = str(self.values).lower()
-        for framework in ui_frameworks:
-            if framework in values_str:
-                evidence.append(f"UI technology: {framework}")
-                confidence += 0.2
-
-        # Check for web service ports
-        ui_ports = [80, 443, 3000, 8080, 8501, 9000]  # 8501 is Streamlit default
-        for template in self.templates:
-            if template.get('kind') == 'Service':
-                ports = template.get('spec', {}).get('ports', [])
-                for port_spec in ports:
-                    port = port_spec.get('port') or port_spec.get('targetPort')
-                    if port in ui_ports:
-                        evidence.append(f"Web service port: {port}")
-                        confidence += 0.1
-
-        # Routes/Ingress for web access
-        route_count = len([t for t in self.templates if t.get('kind') in ['Route', 'Ingress']])
-        if route_count > 0:
-            evidence.append(f"Web routing ({route_count} routes/ingress)")
-            confidence += 0.2
-
-        return ArchitecturePattern(
-            name="User Interface",
-            confidence=min(confidence, 1.0),
-            evidence=evidence,
-            description="Web-based user interface"
-        )
+        """DEPRECATED: Use rule-based detection instead"""
+        return ArchitecturePattern(name="UI", confidence=0.0, evidence=[], description="Use rule engine")
 
     def _detect_cloud_native_patterns(self) -> ArchitecturePattern:
-        """Detect cloud-native and platform patterns."""
-        evidence = []
-        confidence = 0.0
-
-        # OpenShift specific resources
-        openshift_resources = ['Route', 'DeploymentConfig', 'ImageStream', 'BuildConfig']
-        openshift_count = sum(1 for template in self.templates
-                             if template.get('kind') in openshift_resources)
-
-        if openshift_count > 0:
-            evidence.append(f"OpenShift resources ({openshift_count})")
-            confidence += 0.4
-
-        # Service mesh annotations
-        service_mesh_annotations = ['sidecar.istio.io', 'linkerd.io', 'consul.hashicorp.com']
-        for template in self.templates:
-            annotations = template.get('metadata', {}).get('annotations', {})
-            for annotation in annotations:
-                if any(mesh in annotation for mesh in service_mesh_annotations):
-                    evidence.append("Service mesh integration")
-                    confidence += 0.3
-                    break
-
-        # Operator patterns
-        if any('operator' in str(template).lower() for template in self.templates):
-            evidence.append("Kubernetes Operator pattern")
-            confidence += 0.3
-
-        # Cloud provider specific
-        cloud_indicators = ['aws', 'azure', 'gcp']
-        template_str = str(self.templates).lower()
-        for cloud in cloud_indicators:
-            if cloud in template_str:
-                evidence.append(f"Cloud provider: {cloud.upper()}")
-                confidence += 0.2
-
-        return ArchitecturePattern(
-            name="Cloud-Native Patterns",
-            confidence=min(confidence, 1.0),
-            evidence=evidence,
-            description="Cloud-native deployment patterns"
-        )
+        """DEPRECATED: Use rule-based detection instead"""
+        return ArchitecturePattern(name="Cloud Native", confidence=0.0, evidence=[], description="Use rule engine")
 
     def _analyze_security(self) -> List[str]:
         """Analyze security features."""

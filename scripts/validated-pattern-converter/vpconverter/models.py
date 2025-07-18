@@ -25,6 +25,16 @@ class HelmChart:
     uses_helm_templates: bool = False
     templates_found: List[str] = field(default_factory=list)
     enhanced_analysis: Optional[Any] = None  # Will be EnhancedChartAnalysis when available
+    makefile_analysis: Optional[Any] = None  # Will be MakefileAnalysis when available
+
+
+@dataclass
+class ArchitecturePattern:
+    """Represents a detected architecture pattern."""
+    name: str
+    confidence: float  # 0.0 to 1.0
+    evidence: List[str] = field(default_factory=list)
+    description: str = ""
 
 
 @dataclass

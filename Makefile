@@ -186,6 +186,61 @@ undeploy-pattern: ## Remove a deployed pattern (usage: make undeploy-pattern PAT
 	@echo -e "$(BLUE)Removing pattern from $(PATTERN_DIR)...$(NC)"
 	@cd $(PATTERN_DIR) && make uninstall 2>/dev/null || echo "Pattern not deployed"
 
+##@ Code Quality and Validation
+
+.PHONY: shellcheck
+shellcheck: ## Run shellcheck on all bash scripts in the repository
+	@echo -e "$(BLUE)Running shellcheck on all bash scripts...$(NC)"
+	@if command -v shellcheck >/dev/null 2>&1; then \
+		find . -name "*.sh" -type f -not -path "./.git/*" | xargs shellcheck -e SC1091; \
+		echo -e "$(GREEN)✓ Shellcheck passed$(NC)"; \
+	else \
+		echo -e "$(RED)✗ ShellCheck not installed$(NC)"; \
+		exit 1; \
+	fi
+
+.PHONY: python-syntax
+python-syntax: ## Check Python syntax for all Python files
+	@echo -e "$(BLUE)Checking Python syntax...$(NC)"
+	@if command -v python3 >/dev/null 2>&1; then \
+		find . -name "*.py" -type f -not -path "./.git/*" -not -path "./*/venv/*" -not -path "./*/.pytest_cache/*" | while read -r file; do \
+			python3 -m py_compile "$$file" || exit 1; \
+		done; \
+		echo -e "$(GREEN)✓ Python syntax check passed$(NC)"; \
+	else \
+		echo -e "$(RED)✗ Python3 not installed$(NC)"; \
+		exit 1; \
+	fi
+
+.PHONY: validate-converter
+validate-converter: ## Run validation on the pattern converter code
+	@echo -e "$(BLUE)Validating pattern converter...$(NC)"
+	@cd scripts/validated-pattern-converter && make validate-basic
+	@echo -e "$(GREEN)✓ Pattern converter validation passed$(NC)"
+
+.PHONY: validate-basic
+validate-basic: ## Run basic validation checks (shellcheck, python-syntax, converter)
+	@echo -e "$(BLUE)Running basic validation checks...$(NC)"
+	@$(MAKE) shellcheck
+	@$(MAKE) python-syntax
+	@$(MAKE) validate-converter
+	@echo -e "$(GREEN)✓ All basic validation checks passed$(NC)"
+
+.PHONY: validate-all
+validate-all: ## Run comprehensive validation (basic + pattern-specific checks)
+	@echo -e "$(BLUE)Running comprehensive validation...$(NC)"
+	@$(MAKE) validate-basic
+	@echo -e "$(BLUE)Running pattern-specific validations...$(NC)"
+	@for pattern in */pattern-metadata.yaml; do \
+		if [ -f "$$pattern" ]; then \
+			dir=$$(dirname "$$pattern"); \
+			echo -e "$(BLUE)Validating pattern: $$dir$(NC)"; \
+			$(MAKE) lint-yaml PATTERN_DIR="$$dir" || true; \
+			$(MAKE) lint-shell PATTERN_DIR="$$dir" || true; \
+		fi \
+	done
+	@echo -e "$(GREEN)✓ All validation checks passed$(NC)"
+
 ##@ Utilities
 
 .PHONY: clean
@@ -222,6 +277,7 @@ check-env: ## Check environment and display status
 	@echo -n "yq: "; command -v yq >/dev/null 2>&1 && echo -e "$(GREEN)✓$(NC)" || echo -e "$(YELLOW)⚠$(NC)"
 	@echo -n "yamllint: "; command -v yamllint >/dev/null 2>&1 && echo -e "$(GREEN)✓$(NC)" || echo -e "$(YELLOW)⚠$(NC)"
 	@echo -n "ShellCheck: "; command -v shellcheck >/dev/null 2>&1 && echo -e "$(GREEN)✓$(NC)" || echo -e "$(YELLOW)⚠$(NC)"
+	@echo -n "Python3: "; command -v python3 >/dev/null 2>&1 && echo -e "$(GREEN)✓$(NC)" || echo -e "$(YELLOW)⚠$(NC)"
 	@echo -n "Ansible: "; command -v ansible >/dev/null 2>&1 && echo -e "$(GREEN)✓$(NC)" || echo -e "$(YELLOW)⚠$(NC)"
 
 ##@ Examples
