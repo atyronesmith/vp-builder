@@ -6,6 +6,47 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is the AWS LLMD Validated Patterns repository - a comprehensive framework for converting OpenShift/Kubernetes projects into Red Hat Validated Patterns. It includes both reference implementations (AI Virtual Agent, RAG Blueprint) and sophisticated conversion tooling.
 
+## Learning and Rules from Development Sessions
+
+### Variable Expansion Implementation
+- The validated pattern converter now includes a comprehensive GNU Make variable expansion engine
+- When analyzing Makefiles, the converter expands variables to better understand deployment processes
+- Key files: `vpconverter/variable_expander.py`, `vpconverter/makefile_analyzer.py`
+- Handles: $(VAR), ${VAR}, automatic variables ($@, $<, etc.), functions (wildcard, shell, etc.)
+
+### Code Quality and Validation
+```bash
+# Repository-wide validation
+make validate-basic      # Quick validation (shellcheck + python syntax)
+make validate-all        # Comprehensive validation
+make shellcheck         # Check all bash scripts
+make python-syntax      # Check Python syntax
+
+# Converter-specific validation
+cd scripts/validated-pattern-converter
+make validate-basic     # Basic checks
+make validate-all       # Full validation with Poetry
+```
+
+### Important Patterns and Conventions
+1. **Makefile Analysis**: Extended parent directory search to 4 levels for better detection
+2. **Variable Parsing**: Fixed to properly handle `:=` assignments and distinguish from targets
+3. **Unexpanded Variables**: Some variables (like LLM, NAMESPACE) are intentionally undefined
+4. **Function Detection**: Now detects shell, call, eval, and other GNU Make functions
+
+### Documentation Structure
+- `/claude/` directory contains comprehensive validated patterns documentation
+- Key references:
+  - `validated-patterns-reference.md` - Official docs summary
+  - `converter-enhancement-plan.md` - Development roadmap
+  - `variable-expansion-implementation-summary.md` - Technical details
+
+### Development Workflow
+1. Always run `make validate-basic` before committing
+2. Use `--analyze-only` flag with converter to understand projects before conversion
+3. Check `/claude/` directory for architectural decisions and patterns
+4. Exclude generated directories (ai-virtual-agent/, rag-validated-pattern/) from commits
+
 ## Common Development Commands
 
 ### Pattern Conversion
@@ -116,6 +157,39 @@ pattern-name/
 
 - Pattern conversion logic: `scripts/validated-pattern-converter/vpconverter/`
 - Pattern templates: `scripts/validated-pattern-converter/vpconverter/templates.py`
+- Variable expansion engine: `scripts/validated-pattern-converter/vpconverter/variable_expander.py`
+- Makefile analyzer: `scripts/validated-pattern-converter/vpconverter/makefile_analyzer.py`
 - AI Virtual Agent API: `ai-virtual-agent/backend/backend/main.py`
 - Frontend routing: `ai-virtual-agent/frontend/src/Routes.tsx`
 - Deployment charts: `*/deploy/helm/`
+
+## Session Learnings and Context
+
+### Validated Patterns Framework
+- Validated patterns use a hub-and-spoke architecture with GitOps (ArgoCD)
+- ClusterGroup charts are the entry point - they're what get deployed first
+- Values hierarchy: values-secret.yaml > values-*.yaml > values-global.yaml
+- Common framework integration via git subtree is standard practice
+
+### Converter Enhancement Priorities (from enhancement plan)
+1. ✅ **Variable Expansion Engine** - COMPLETED
+2. ClusterGroup Chart Generation - Next priority
+3. Values Structure Alignment
+4. Bootstrap Application Creation
+5. Common Framework Integration
+6. Product Version Tracking
+7. Imperative Job Templates
+8. Enhanced Validation
+
+### Key Technical Decisions
+- Use Jinja2 templating for consistency across generated files
+- Preserve original Helm charts in migrated-charts/ directory
+- Generate ArgoCD wrapper charts for GitOps deployment
+- Implement rule-based pattern detection with confidence scoring
+- Cache variable expansions for performance
+
+### Testing and Validation Strategy
+- Always test with real patterns (multicloud-gitops, ai-virtual-agent)
+- Use --analyze-only flag for understanding before conversion
+- Validate generated patterns deploy successfully to OpenShift
+- Ensure backwards compatibility with existing patterns
