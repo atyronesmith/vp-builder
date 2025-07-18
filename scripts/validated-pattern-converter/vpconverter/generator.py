@@ -14,6 +14,7 @@ from jinja2 import Environment, BaseLoader
 import yaml
 
 from .analyzer import AnalysisResult, HelmChart
+from .models import PatternData, ClusterGroupData, ClusterGroupApplication, ClusterGroupSubscription
 from .config import PATTERN_DIRS, VERSION, CLUSTERGROUP_VERSION, DEFAULT_PRODUCTS
 from .pattern_configurator import PatternConfigurator
 from .product_detector import ProductDetector
@@ -76,7 +77,7 @@ class PatternGenerator:
 
             # Generate ClusterGroup chart (CRITICAL)
             status.update("Generating ClusterGroup chart...")
-            self._generate_clustergroup_chart()
+            self._generate_clustergroup_chart(analysis_result)
 
             # Generate bootstrap application
             status.update("Generating bootstrap mechanism...")
@@ -325,15 +326,19 @@ metadata:
 
         log_info(f"  ✓ Created wrapper chart: charts/{site}/{chart.name}/")
 
-    def _generate_clustergroup_chart(self) -> None:
+    def _generate_clustergroup_chart(self, analysis_result: Optional[AnalysisResult] = None) -> None:
         """Generate the ClusterGroup chart that serves as the pattern entry point."""
         chart_dir = self.pattern_dir / "charts" / "hub" / "clustergroup"
         ensure_directory(chart_dir)
         ensure_directory(chart_dir / "templates")
 
+        # Create pattern data from analysis result
+        pattern_data = self._create_pattern_data(analysis_result)
+
         # Generate Chart.yaml
         context = {
             "pattern_name": self.pattern_name,
+            "description": f"ClusterGroup chart for {self.pattern_name} pattern",
             "clustergroup_version": CLUSTERGROUP_VERSION
         }
         self._render_and_write(
@@ -342,11 +347,17 @@ metadata:
             context
         )
 
-        # Generate values.yaml
+        # Generate values.yaml with full pattern data
         context = {
-            "pattern_name": self.pattern_name,
-            "git_repo": f"https://github.com/{self.github_org}/{self.pattern_dir.name}",
-            "target_revision": "main"
+            "pattern_name": pattern_data.name,
+            "git_repo_url": pattern_data.git_repo_url,
+            "git_branch": pattern_data.git_branch,
+            "hub_cluster_domain": pattern_data.hub_cluster_domain,
+            "local_cluster_domain": pattern_data.local_cluster_domain,
+            "namespaces": pattern_data.namespaces,
+            "subscriptions": pattern_data.subscriptions,
+            "projects": pattern_data.projects,
+            "applications": pattern_data.applications
         }
         self._render_and_write(
             "charts/hub/clustergroup/values.yaml",
@@ -358,6 +369,83 @@ metadata:
         (chart_dir / "templates" / ".gitkeep").touch()
 
         log_info("  ✓ Created ClusterGroup chart: charts/hub/clustergroup/")
+
+    def _create_pattern_data(self, analysis_result: Optional[AnalysisResult] = None) -> PatternData:
+        """Create PatternData from analysis result and pattern configuration."""
+        # Base pattern data
+        pattern_data = PatternData(
+            name=self.pattern_name,
+            description=f"Validated pattern for {self.pattern_name}",
+            git_repo_url=f"https://github.com/{self.github_org}/{self.pattern_dir.name}",
+            git_branch="main",
+            hub_cluster_domain="apps.hub.example.com",
+            local_cluster_domain="apps.hub.example.com"
+        )
+
+        # Add default namespaces
+        pattern_data.namespaces = [
+            "open-cluster-management",
+            "openshift-gitops",
+            "external-secrets",
+            "vault"
+        ]
+
+        # Add default subscriptions
+        pattern_data.subscriptions = [
+            ClusterGroupSubscription(
+                name="openshift-gitops-operator",
+                namespace="openshift-operators",
+                channel="latest"
+            ),
+            ClusterGroupSubscription(
+                name="advanced-cluster-management",
+                namespace="open-cluster-management",
+                channel="release-2.10"
+            )
+        ]
+
+        # Add default projects
+        pattern_data.projects = ["hub"]
+
+        # Add default applications
+        pattern_data.applications = [
+            ClusterGroupApplication(
+                name="acm",
+                namespace="open-cluster-management",
+                project="hub",
+                path="common/acm"
+            ),
+            ClusterGroupApplication(
+                name="vault",
+                namespace="vault",
+                project="hub",
+                path="common/hashicorp-vault"
+            ),
+            ClusterGroupApplication(
+                name="golang-external-secrets",
+                namespace="golang-external-secrets",
+                project="hub",
+                path="common/golang-external-secrets"
+            )
+        ]
+
+        # Add applications from analysis result
+        if analysis_result:
+            for chart in analysis_result.helm_charts:
+                # Add namespace for each chart
+                pattern_data.namespaces.append(chart.name)
+                
+                # Add application for each chart
+                pattern_data.applications.append(
+                    ClusterGroupApplication(
+                        name=chart.name,
+                        namespace=chart.name,
+                        project="hub",
+                        path=f"charts/hub/{chart.name}"
+                    )
+                )
+
+        return pattern_data
 
     def _generate_bootstrap_files(self) -> None:
         """Generate bootstrap application and scripts."""

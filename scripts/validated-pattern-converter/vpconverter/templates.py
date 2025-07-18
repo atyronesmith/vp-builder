@@ -217,12 +217,12 @@ clusterGroup:
     #    image: registry.redhat.io/ansible-automation-platform-24/ee-supported-rhel8:latest
 
   sharedValueFiles:
-    - /values/{{ values }}/{{ clusterGroup.name }}/values-{{ chart }}.yaml
-    - /values/{{ values }}/values-global.yaml
+    - /values/{{ pattern_name }}/hub/values-{{ pattern_name }}.yaml
+    - /values/{{ pattern_name }}/values-global.yaml
     # sharedValueFiles is a flexible mechanism that will add the listed valueFiles to every app
     # The following is an example of a values file that will be shared across all applications
-    # - /values/{{ values }}/values-global.yaml
-    # However, the reference {{ values }}/{{ clusterGroup.name }}/values-{{ chart }}.yaml
+    # - /values/{{ pattern_name }}/values-global.yaml
+    # However, the reference {{ pattern_name }}/hub/values-{{ pattern_name }}.yaml
     # is already included by default for every app
 """
 
@@ -532,10 +532,11 @@ CONVERSION_REPORT_TEMPLATE = """\
 # ClusterGroup Chart.yaml template
 CLUSTERGROUP_CHART_TEMPLATE = """\
 apiVersion: v2
-name: hub
-description: ClusterGroup chart for {{ pattern_name }} pattern
+name: {{ pattern_name }}
+description: {{ description }}
 type: application
 version: 0.1.0
+appVersion: "1.0"
 dependencies:
   - name: clustergroup
     version: "~{{ clustergroup_version }}"
@@ -544,15 +545,44 @@ dependencies:
 
 # ClusterGroup values.yaml template
 CLUSTERGROUP_VALUES_TEMPLATE = """\
-# This values file is minimal because the actual configuration
-# comes from the values-global.yaml and values-hub.yaml files
-# that are referenced in the bootstrap application
-
 global:
   pattern: {{ pattern_name }}
+  repoURL: {{ git_repo_url }}
+  targetRevision: {{ git_branch }}
+  namespace: {{ pattern_name }}
+  hubClusterDomain: {{ hub_cluster_domain }}
+  localClusterDomain: {{ local_cluster_domain }}
 
 clusterGroup:
   name: hub
+  isHubCluster: true
+  
+  namespaces:
+{%- for namespace in namespaces %}
+    - {{ namespace }}
+{%- endfor %}
+  
+  subscriptions:
+{%- for subscription in subscriptions %}
+    {{ subscription.name }}:
+      name: {{ subscription.name }}
+      namespace: {{ subscription.namespace }}
+      channel: {{ subscription.channel }}
+{%- endfor %}
+  
+  projects:
+{%- for project in projects %}
+    - {{ project }}
+{%- endfor %}
+  
+  applications:
+{%- for app in applications %}
+    {{ app.name }}:
+      name: {{ app.name }}
+      namespace: {{ app.namespace }}
+      project: {{ app.project }}
+      path: {{ app.path }}
+{%- endfor %}
 """
 
 # Bootstrap application template

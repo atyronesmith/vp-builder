@@ -38,6 +38,63 @@ class ArchitecturePattern:
 
 
 @dataclass
+class ClusterGroupApplication:
+    """Application definition for ClusterGroup"""
+    name: str
+    namespace: str
+    project: str
+    path: Optional[str] = None
+    chart: Optional[str] = None
+    chart_version: Optional[str] = None
+    overrides: List[Dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class ClusterGroupSubscription:
+    """Subscription definition for ClusterGroup"""
+    name: str
+    namespace: str
+    channel: str
+    source: str = "redhat-operators"
+    source_namespace: str = "openshift-marketplace"
+
+
+@dataclass
+class ManagedClusterGroup:
+    """Managed cluster group definition"""
+    name: str
+    labels: List[Dict[str, str]] = field(default_factory=list)
+
+
+@dataclass
+class ClusterGroupData:
+    """ClusterGroup configuration data"""
+    name: str
+    is_hub_cluster: bool
+    namespaces: List[str]
+    subscriptions: List[ClusterGroupSubscription]
+    projects: List[str]
+    applications: List[ClusterGroupApplication]
+    managed_cluster_groups: List[ManagedClusterGroup] = field(default_factory=list)
+
+
+@dataclass
+class PatternData:
+    """Complete pattern data for generation"""
+    name: str
+    description: str
+    git_repo_url: str
+    git_branch: str = "main"
+    hub_cluster_domain: str = "apps.hub.example.com"
+    local_cluster_domain: str = "apps.hub.example.com"
+    namespaces: List[str] = field(default_factory=list)
+    subscriptions: List[ClusterGroupSubscription] = field(default_factory=list)
+    projects: List[str] = field(default_factory=list)
+    applications: List[ClusterGroupApplication] = field(default_factory=list)
+    cluster_group_data: Optional[ClusterGroupData] = None
+
+
+@dataclass
 class AnalysisResult:
     """Results from repository analysis."""
     source_path: Path
