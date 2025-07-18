@@ -117,12 +117,6 @@ main:
   multiSourceConfig:
     enabled: true
     clusterGroupChartVersion: "0.9.*"
-
-  gitOpsSpec:
-    syncPolicy:
-      comparedTo:
-        source:
-          targetRevision: main
 """
 
 # values-hub.yaml template
@@ -130,35 +124,29 @@ VALUES_HUB_TEMPLATE = """\
 clusterGroup:
   name: hub
   isHubCluster: true
-  targetCluster: in-cluster
 
   namespaces:
     - open-cluster-management
     - openshift-gitops
     - external-secrets
     - vault
+    - golang-external-secrets
 {%- for chart in helm_charts %}
     - {{ chart.name }}
 {%- endfor %}
 
-  operatorgroupExcludes:
-    - vault-operator-product
-
   subscriptions:
-    gitops:
-      name: openshift-gitops-operator
-      namespace: openshift-operators
-      channel: latest
-      source: redhat-operators
-
     acm:
       name: advanced-cluster-management
       namespace: open-cluster-management
-      channel: release-2.10
+      channel: release-2.11
       source: redhat-operators
 
   projects:
     - hub
+{%- for chart in helm_charts %}
+    - {{ chart.name }}
+{%- endfor %}
 
   applications:
     acm:
@@ -168,7 +156,6 @@ clusterGroup:
       path: common/acm
       chart: acm
       chartVersion: 0.1.*
-      repoURL: https://charts.validatedpatterns.io
       ignoreDifferences:
         - group: internal.open-cluster-management.io
           kind: ManagedClusterInfo
@@ -180,9 +167,8 @@ clusterGroup:
       namespace: vault
       project: hub
       path: common/hashicorp-vault
-      chart: vault
+      chart: hashicorp-vault
       chartVersion: 0.1.*
-      repoURL: https://charts.validatedpatterns.io
 
     golang-external-secrets:
       name: golang-external-secrets
@@ -191,15 +177,13 @@ clusterGroup:
       path: common/golang-external-secrets
       chart: golang-external-secrets
       chartVersion: 0.1.*
-      repoURL: https://charts.validatedpatterns.io
 
 {%- for chart in helm_charts %}
     {{ chart.name }}:
       name: {{ chart.name }}
       namespace: {{ chart.name }}
-      project: hub
-      path: charts/hub/{{ chart.name }}
-      targetRevision: main
+      project: {{ chart.name }}
+      path: charts/all/{{ chart.name }}
 {%- endfor %}
 
   managedClusterGroups: []
@@ -217,13 +201,7 @@ clusterGroup:
     #    image: registry.redhat.io/ansible-automation-platform-24/ee-supported-rhel8:latest
 
   sharedValueFiles:
-    - /values/{{ pattern_name }}/hub/values-{{ pattern_name }}.yaml
-    - /values/{{ pattern_name }}/values-global.yaml
-    # sharedValueFiles is a flexible mechanism that will add the listed valueFiles to every app
-    # The following is an example of a values file that will be shared across all applications
-    # - /values/{{ pattern_name }}/values-global.yaml
-    # However, the reference {{ pattern_name }}/hub/values-{{ pattern_name }}.yaml
-    # is already included by default for every app
+    - '/overrides/values-{{ "{{" }} $.Values.global.clusterPlatform {{ "}}" }}.yaml'
 """
 
 # values-region.yaml template
@@ -231,16 +209,37 @@ VALUES_REGION_TEMPLATE = """\
 clusterGroup:
   name: region
   isHubCluster: false
-  targetCluster: in-cluster
 
-  namespaces: []
+  namespaces:
+    - golang-external-secrets
+{%- for chart in helm_charts %}
+    - {{ chart.name }}
+{%- endfor %}
 
   subscriptions: {}
 
-  applications: {}
-
   projects:
     - region
+{%- for chart in helm_charts %}
+    - {{ chart.name }}
+{%- endfor %}
+
+  applications:
+    golang-external-secrets:
+      name: golang-external-secrets
+      namespace: golang-external-secrets
+      project: region
+      path: common/golang-external-secrets
+      chart: golang-external-secrets
+      chartVersion: 0.1.*
+
+{%- for chart in helm_charts %}
+    {{ chart.name }}:
+      name: {{ chart.name }}
+      namespace: {{ chart.name }}
+      project: {{ chart.name }}
+      path: charts/all/{{ chart.name }}
+{%- endfor %}
 
   imperative:
     jobs: []
@@ -248,7 +247,8 @@ clusterGroup:
 
   managedClusterGroups: []
 
-  sharedValueFiles: []
+  sharedValueFiles:
+    - '/overrides/values-{{ "{{" }} $.Values.global.clusterPlatform {{ "}}" }}.yaml'
 """
 
 # values-secret.yaml.template

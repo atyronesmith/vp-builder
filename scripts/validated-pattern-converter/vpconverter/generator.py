@@ -79,6 +79,11 @@ class PatternGenerator:
             status.update("Generating ClusterGroup chart...")
             self._generate_clustergroup_chart(analysis_result)
 
+            # Generate wrapper charts for discovered Helm charts
+            status.update("Generating wrapper charts...")
+            for chart in analysis_result.helm_charts:
+                self.generate_wrapper_chart(chart, site="all")
+
             # Generate bootstrap application
             status.update("Generating bootstrap mechanism...")
             self._generate_bootstrap_files()
@@ -98,6 +103,10 @@ class PatternGenerator:
             # Create empty placeholder files
             status.update("Creating placeholder files...")
             self._create_placeholders()
+
+            # Generate platform overrides
+            status.update("Generating platform overrides...")
+            self._generate_platform_overrides()
 
         log_success(f"Pattern structure generated in: {self.pattern_dir}")
 
@@ -174,7 +183,11 @@ class PatternGenerator:
         self._render_and_write("values-hub.yaml", VALUES_HUB_TEMPLATE, context)
 
         # values-region.yaml
-        self._write_file("values-region.yaml", VALUES_REGION_TEMPLATE)
+        context = {
+            "helm_charts": analysis_result.helm_charts,
+            "pattern_name": self.pattern_name
+        }
+        self._render_and_write("values-region.yaml", VALUES_REGION_TEMPLATE, context)
 
         # values-secret.yaml.template
         self._write_file("values-secret.yaml.template", VALUES_SECRET_TEMPLATE)
@@ -285,7 +298,7 @@ class PatternGenerator:
             file_path.parent.mkdir(parents=True, exist_ok=True)
             file_path.touch()
 
-    def generate_wrapper_chart(self, chart: HelmChart, site: str = "hub") -> None:
+    def generate_wrapper_chart(self, chart: HelmChart, site: str = "all") -> None:
         """Generate ArgoCD wrapper chart for a Helm chart."""
         wrapper_dir = self.pattern_dir / "charts" / site / chart.name
         ensure_directory(wrapper_dir / "templates")
@@ -387,7 +400,8 @@ metadata:
             "open-cluster-management",
             "openshift-gitops",
             "external-secrets",
-            "vault"
+            "vault",
+            "golang-external-secrets"
         ]
 
         # Add default subscriptions
@@ -435,13 +449,16 @@ metadata:
                 # Add namespace for each chart
                 pattern_data.namespaces.append(chart.name)
                 
+                # Add project for each chart
+                pattern_data.projects.append(chart.name)
+                
                 # Add application for each chart
                 pattern_data.applications.append(
                     ClusterGroupApplication(
                         name=chart.name,
                         namespace=chart.name,
-                        project="hub",
-                        path=f"charts/hub/{chart.name}"
+                        project=chart.name,
+                        path=f"charts/all/{chart.name}"
                     )
                 )
 
@@ -479,6 +496,26 @@ metadata:
         os.chmod(script_path, 0o755)
 
         log_info("  ✓ Created bootstrap mechanism")
+
+    def _generate_platform_overrides(self) -> None:
+        """Generate platform-specific override files."""
+        # Create platform override files for common platforms
+        platforms = ["AWS", "Azure", "GCP", "IBMCloud", "OpenStack"]
+        
+        for platform in platforms:
+            platform_overrides = f"""\
+# Platform-specific overrides for {platform}
+# Add platform-specific configurations here
+
+global:
+  clusterPlatform: {platform.lower()}
+  
+# Example platform-specific configurations:
+# storageClass: {platform.lower()}-storage
+# domainSuffix: {platform.lower()}.example.com
+"""
+            self._write_file(f"overrides/values-{platform}.yaml", platform_overrides)
+            log_info(f"  ✓ Created platform override: overrides/values-{platform}.yaml")
 
     def _write_file(self, relative_path: str, content: str) -> None:
         """Write content to a file."""

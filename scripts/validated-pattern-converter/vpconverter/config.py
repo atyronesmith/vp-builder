@@ -14,6 +14,7 @@ PATTERN_DIRS = [
     "ansible",
     "charts/hub",
     "charts/region",
+    "charts/all",
     "common",
     "migrated-charts",
     "overrides",

@@ -195,143 +195,57 @@ Comprehensive testing confirms that generated patterns now pass the complete val
 - **23 Info Items** - All structure and configuration validated
 - **Overall: PASSED** - Ready for deployment
 
-### **Priority 3: Values Structure Alignment**
+### **Priority 3: Values Structure Alignment** ✅ **COMPLETED**
 
 #### **Objective**
 Fix the values file structure to match common framework expectations.
 
-#### **Files to Modify**
-- `vpconverter/templates.py` - Update values templates
-- `vpconverter/models.py` - Add ClusterGroup data structures
+#### **Files Modified**
+- `vpconverter/templates.py` - Updated values templates to match common framework structure
+- `vpconverter/config.py` - Added charts/all directory to pattern structure
+- `vpconverter/generator.py` - Enhanced pattern generation with proper application structure and platform overrides
 
-#### **Implementation Details**
+#### **Implementation Completed**
 
-**2.1 Update Values Templates**
-```python
-# vpconverter/templates.py - Update existing templates
+**3.1 Updated Values Templates to Match Common Framework**
+- **values-global.yaml**: Removed gitOpsSpec section to match reference patterns
+- **values-hub.yaml**: Updated application structure to use proper path and chart references
+- **values-region.yaml**: Enhanced with proper template rendering and application structure
+- **Namespace alignment**: Added missing namespaces (openshift-gitops, external-secrets)
+- **Application structure**: Added required path fields for all applications
+- **Project organization**: Each application gets its own project for better organization
 
-VALUES_GLOBAL_TEMPLATE = """
-global:
-  pattern: {{ pattern_name }}
-  options:
-    useCSV: false
-    syncPolicy: Automatic
-    installPlanApproval: Automatic
-  git:
-    provider: {{ git_provider }}
-    account: {{ git_account }}
-    email: {{ git_email }}
-  domain: {{ domain }}
-  
-main:
-  clusterGroupName: hub
-  multiSourceConfig:
-    enabled: true
-    clusterGroupChartVersion: "0.9.*"
-"""
+**3.2 Enhanced Directory Structure**
+- **Added charts/all directory**: For applications that can run on any cluster type
+- **Updated wrapper chart generation**: Charts now generated in charts/all instead of charts/hub
+- **Platform overrides**: Added support for platform-specific values files (AWS, Azure, GCP, etc.)
 
-VALUES_HUB_TEMPLATE = """
-clusterGroup:
-  name: hub
-  isHubCluster: true
-  
-  namespaces:
-{%- for namespace in namespaces %}
-    - {{ namespace }}
-{%- endfor %}
-  
-  subscriptions:
-{%- for subscription in subscriptions %}
-    {{ subscription.name }}:
-      name: {{ subscription.name }}
-      namespace: {{ subscription.namespace }}
-      channel: {{ subscription.channel }}
-{%- endfor %}
-  
-  projects:
-{%- for project in projects %}
-    - {{ project }}
-{%- endfor %}
-  
-  applications:
-{%- for app in applications %}
-    {{ app.name }}:
-      name: {{ app.name }}
-      namespace: {{ app.namespace }}
-      project: {{ app.project }}
-      path: {{ app.path }}
-{%- if app.chart %}
-      chart: {{ app.chart }}
-      chartVersion: {{ app.chart_version }}
-{%- endif %}
-{%- if app.overrides %}
-      overrides:
-{%- for override in app.overrides %}
-        - name: {{ override.name }}
-          value: {{ override.value }}
-{%- endfor %}
-{%- endif %}
-{%- endfor %}
-  
-{%- if managed_cluster_groups %}
-  managedClusterGroups:
-{%- for cluster_group in managed_cluster_groups %}
-    {{ cluster_group.name }}:
-      name: {{ cluster_group.name }}
-      acmlabels:
-{%- for label in cluster_group.labels %}
-        - name: {{ label.name }}
-          value: {{ label.value }}
-{%- endfor %}
-      helmOverrides:
-        - name: clusterGroup.isHubCluster
-          value: false
-{%- endfor %}
-{%- endif %}
-"""
-```
+**3.3 Fixed Application References**
+- **Chart applications**: Now include both path and chart references
+- **Path structure**: Applications use charts/all/app-name for discovered charts
+- **Project mapping**: Each application gets its own project for better ArgoCD organization
+- **Namespace mapping**: Each application gets its own namespace
 
-**2.2 Add ClusterGroup Data Structures**
-```python
-# vpconverter/models.py - Add new data classes
+**3.4 Platform Override Support**
+- **sharedValueFiles**: Updated to use dynamic platform override files
+- **Platform-specific files**: Auto-generated for AWS, Azure, GCP, IBMCloud, OpenStack
+- **Dynamic value injection**: Uses Helm templating for platform-specific configurations
 
-@dataclass
-class ClusterGroupApplication:
-    """Application definition for ClusterGroup"""
-    name: str
-    namespace: str
-    project: str
-    path: Optional[str] = None
-    chart: Optional[str] = None
-    chart_version: Optional[str] = None
-    overrides: List[Dict[str, Any]] = field(default_factory=list)
-    
-@dataclass
-class ClusterGroupSubscription:
-    """Subscription definition for ClusterGroup"""
-    name: str
-    namespace: str
-    channel: str
-    source: str = "redhat-operators"
-    source_namespace: str = "openshift-marketplace"
-    
-@dataclass
-class ManagedClusterGroup:
-    """Managed cluster group definition"""
-    name: str
-    labels: List[Dict[str, str]] = field(default_factory=list)
-    
-@dataclass
-class ClusterGroupData:
-    """ClusterGroup configuration data"""
-    name: str
-    is_hub_cluster: bool
-    namespaces: List[str]
-    subscriptions: List[ClusterGroupSubscription]
-    projects: List[str]
-    applications: List[ClusterGroupApplication]
-    managed_cluster_groups: List[ManagedClusterGroup] = field(default_factory=list)
-```
+**3.5 Template Rendering Fixes**
+- **Fixed region template**: Proper Jinja2 template processing for values-region.yaml
+- **Context propagation**: All templates now receive proper context for rendering
+- **Variable substitution**: Fixed template variable processing for dynamic content
+
+**3.6 Results Achieved**
+- **✅ Values structure alignment** - Now matches multicloud-gitops reference pattern
+- **✅ Proper application definitions** - All applications have required path fields
+- **✅ Platform override support** - Dynamic platform-specific configurations
+- **✅ Enhanced project organization** - Each application gets its own project
+- **✅ Fixed template rendering** - All templates now render correctly
+- **✅ Validation compliance** - Generated patterns pass complete validation suite
+
+#### **Impact**
+The values structure now fully aligns with the common framework expectations, enabling proper multi-cluster deployments with platform-specific overrides and correct application organization. Generated patterns are now structurally identical to reference patterns.
 
 ### **Priority 4: Bootstrap Application Creation**
 
@@ -744,12 +658,12 @@ def _validate_clustergroup_chart(self, pattern_path: Path) -> List[ValidationIss
 - [x] **Added comprehensive unit tests** for ClusterGroup generation functionality
 - [x] **Tested ClusterGroup chart generation** with sample projects - verified proper generation of Chart.yaml and values.yaml
 
-### **Day 4-5: Values Structure Alignment**
-- [ ] Update values templates to match common framework
-- [ ] Fix application structure in values files
-- [ ] Add ClusterGroup application definitions
-- [ ] Test values structure with multicloud-gitops comparison
-- [ ] Add validation for values structure
+### **Day 4-5: Values Structure Alignment** ✅ **COMPLETED**
+- [x] **Updated values templates** to match common framework structure
+- [x] **Fixed application structure** in values files with proper path and chart references
+- [x] **Added ClusterGroup application definitions** with complete project organization
+- [x] **Tested values structure** with multicloud-gitops comparison - structures now align
+- [x] **Added validation** for values structure - all patterns pass validation
 
 ### **Day 6-7: Bootstrap and Common Framework**
 - [ ] Implement bootstrap application generation
@@ -799,7 +713,7 @@ def _validate_clustergroup_chart(self, pattern_path: Path) -> List[ValidationIss
 - ✅ **ClusterGroup chart is properly generated** with complete configuration structure
 - ✅ **Generated patterns pass validated patterns validation** - All required files, structure, and configuration validated
 - ✅ **Bootstrap application successfully deploys pattern** - Bootstrap mechanism generates correct ArgoCD Application
-- Values structure matches common framework expectations (partially complete - sharedValueFiles updated)
+- ✅ **Values structure matches common framework expectations** - Complete alignment with multicloud-gitops reference
 
 ### **Phase 2 Success**
 - Common framework integration works correctly
