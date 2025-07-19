@@ -44,48 +44,139 @@ MAKEFILE_TEMPLATE = """\
 .PHONY: default
 default: help
 
+.PHONY: help
+##@ Pattern Help
+
+help: ## This help message
+\t@make -f common/Makefile MAKEFILE_LIST="Makefile common/Makefile" help
+
 %:
 \t@if [ -f common/Makefile ]; then \\
 \t\tmake -f common/Makefile $@; \\
 \telse \\
-\t\techo "ERROR: common/Makefile not found. Clone from:"; \\
-\t\techo "https://github.com/validatedpatterns-docs/common.git"; \\
+\t\techo "No common/Makefile found. Please run:"; \\
+\t\techo "  git clone https://github.com/validatedpatterns/common.git"; \\
+\t\techo "or"; \\
+\t\techo "  git submodule update --init"; \\
+\t\techo ""; \\
+\t\techo "For more information: https://validatedpatterns.io/patterns/"; \\
 \t\texit 1; \\
 \tfi
+
+##@ Pattern Installation
+
+.PHONY: install
+install: operator-deploy post-install ## Install the pattern
+\t@echo "Installed {{ pattern_name }} pattern successfully"
+
+.PHONY: post-install
+post-install: ## Post installation tasks
+\t@make load-secrets
+\t@echo "Post-install complete"
+
+.PHONY: uninstall
+uninstall: operator-destroy ## Uninstall the pattern
+\t@echo "Uninstalled {{ pattern_name }} pattern"
+
+##@ Pattern Testing and Validation
+
+.PHONY: test
+test: ## Run pattern tests
+\t@make -f common/Makefile PATTERN_OPTS="-f values-global.yaml -f values-hub.yaml" test
+
+.PHONY: validate-pattern
+validate-pattern: ## Validate pattern structure
+\t@make -f common/Makefile validate-pattern
+
+##@ Local Development
+
+.PHONY: predeploy
+predeploy: ## Run pre-deployment checks
+\t@./pattern.sh make show-secrets
+\t@./pattern.sh make validate-origin
+
+##@ Utility Targets
+
+.PHONY: bootstrap
+bootstrap: ## DEPRECATED: Use 'make install' instead
+\t@echo "WARNING: 'make bootstrap' is deprecated. Use 'make install' instead."
+\t@make install
 """
 
 # pattern-metadata.yaml template
 PATTERN_METADATA_TEMPLATE = """\
 name: {{ pattern_name }}
-displayName: "{{ pattern_name }} Pattern"
+displayName: "{{ pattern_display_name }}"
 description: |
-  TODO: Add description
+  {{ pattern_description }}
 gitOpsRepo: "https://github.com/{{ github_org }}/{{ pattern_dir }}"
 gitOpsBranch: main
 patternDocumentationUrl: "https://validatedpatterns.io/patterns/{{ pattern_name }}/"
 architectureReadmeUrl: "https://github.com/{{ github_org }}/{{ pattern_dir }}/blob/main/README.md"
+
+# Pattern classification
+tier: sandbox
+supportLevel: community
+
+# Organizations
 organizations:
   - {{ github_org }}
   - validatedpatterns
+
+# Categories this pattern belongs to
+categories:
+{%- for category in categories %}
+  - {{ category }}
+{%- endfor %}
+
+# Programming languages used in this pattern
+languages:
+{%- for language in languages %}
+  - {{ language }}
+{%- endfor %}
+
+# Industries this pattern applies to
+industries:
+{%- for industry in industries %}
+  - {{ industry }}
+{%- endfor %}
 
 # Required products and their versions
 products:
 {%- for product in products %}
   - name: "{{ product.name }}"
     version: "{{ product.version }}"
-{%- if product.operator %}
+    source: "{{ product.source }}"
+    confidence: "{{ product.confidence }}"
+{%- if product.operator_info %}
     operator:
-      channel: "{{ product.operator.channel }}"
-      source: "{{ product.operator.source }}"
-{%- if product.operator.subscription %}
-      subscription: "{{ product.operator.subscription }}"
+      channel: "{{ product.operator_info.channel }}"
+      source: "{{ product.operator_info.source }}"
+{%- if product.operator_info.subscription %}
+      subscription: "{{ product.operator_info.subscription }}"
 {%- endif %}
 {%- endif %}
 {%- endfor %}
 
-# Additional products detected from source manifests:
-# If any products above have "TODO" comments, please verify and update them.
-# You may also need to add products that were not automatically detected.
+# Detected architecture patterns
+patterns:
+{%- for pattern in detected_patterns %}
+  - name: {{ pattern }}
+    confidence: high
+{%- endfor %}
+
+# Links to additional resources
+links:
+  - name: "Validated Patterns Documentation"
+    url: "https://validatedpatterns.io/"
+  - name: "Common Framework"
+    url: "https://github.com/validatedpatterns/common"
+  - name: "Pattern Development Guide"
+    url: "https://validatedpatterns.io/learn/quickstart/"
+
+# Creation metadata
+created: "{{ creation_date }}"
+version: "1.0.0"
 """
 
 # values-global.yaml template
@@ -312,54 +403,177 @@ secrets:
 README_TEMPLATE = """\
 # {{ pattern_name }} Validated Pattern
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 ## Overview
-TODO: Add pattern description
+
+This is a validated pattern that follows the [Validated Patterns](https://validatedpatterns.io/) framework for GitOps-based deployments on OpenShift.
 
 ## Prerequisites
+
 - OpenShift Container Platform 4.12+
-- Helm 3.x
 - Git
 - Make
+- An OpenShift cluster with cluster-admin privileges
 
-## Installation
+## Quick Start
 
-### Quick Start
+### 1. Clone and Setup
+
 ```bash
-# Clone the pattern
+# Clone the pattern repository
 git clone https://github.com/{{ github_org }}/{{ pattern_dir }}.git
 cd {{ pattern_dir }}
 
-# Clone the common framework
-git clone https://github.com/validatedpatterns-docs/common.git
+# Run the setup script to configure common framework
+./scripts/setup.sh
+```
 
-# Create pattern symlink
-ln -s ./common/scripts/pattern-util.sh pattern.sh
-chmod +x pattern.sh
+### 2. Configure Secrets
 
-# Copy and edit secrets
+```bash
+# Edit the secrets file with your actual values
 cp values-secret.yaml.template values-secret.yaml
-vi values-secret.yaml
+# Edit values-secret.yaml with your environment-specific secrets
+```
 
-# Deploy the pattern
+### 3. Deploy the Pattern
+
+```bash
+# Deploy the complete pattern
 make install
 ```
 
-## Components
+### 4. Verify Deployment
+
+```bash
+# Check pattern status
+make test
+
+# Validate pattern deployment
+make validate-pattern
+```
+
+## Alternative Setup (Manual)
+
+If you prefer manual setup:
+
+```bash
+# Clone the common framework
+git clone https://github.com/validatedpatterns/common.git
+
+# Create pattern.sh symlink
+ln -sf common/scripts/pattern-util.sh pattern.sh
+
+# Configure secrets
+cp values-secret.yaml.template values-secret.yaml
+# Edit values-secret.yaml with your secrets
+
+# Deploy
+make install
+```
+
+## Architecture
+
+This pattern deploys the following components:
+
+### Hub Cluster Components
+- **Advanced Cluster Management (ACM)**: Multi-cluster management
+- **HashiCorp Vault**: Secret management
+- **External Secrets Operator**: Secret synchronization
+
 {%- if helm_charts %}
-### Helm Charts
+### Application Components
 {%- for chart in helm_charts %}
-- **{{ chart.name }}**: {{ chart.description or "TODO: Add description" }}
+- **{{ chart.name }}**: {{ chart.description or "Application component" }}
 {%- endfor %}
 {%- endif %}
 
-## Architecture
-TODO: Add architecture diagram and description
+## Pattern Structure
+
+```
+{{ pattern_dir }}/
+├── charts/                    # Helm charts
+│   ├── all/                  # Charts that can run anywhere
+│   ├── hub/                  # Hub-specific charts
+│   └── region/               # Regional charts
+├── common/                   # Common framework (git submodule/clone)
+├── overrides/               # Platform-specific overrides
+├── scripts/                 # Utility scripts
+├── values-global.yaml       # Global configuration
+├── values-hub.yaml         # Hub cluster configuration
+├── values-region.yaml      # Regional cluster configuration
+├── values-secret.yaml.template # Secret template
+└── Makefile                # Main deployment interface
+```
+
+## Configuration
+
+### Values Files
+
+- **values-global.yaml**: Global pattern configuration
+- **values-hub.yaml**: Hub cluster specific configuration  
+- **values-region.yaml**: Regional cluster configuration
+- **values-secret.yaml**: Sensitive configuration (not committed)
+
+### Platform Overrides
+
+The pattern supports platform-specific overrides in the `overrides/` directory:
+
+- `values-AWS.yaml` - AWS-specific configurations
+- `values-Azure.yaml` - Azure-specific configurations
+- `values-GCP.yaml` - GCP-specific configurations
+
+## Common Operations
+
+### View Pattern Status
+```bash
+make show-secrets
+```
+
+### Update Pattern
+```bash
+git pull
+make upgrade
+```
+
+### Uninstall Pattern
+```bash
+make uninstall
+```
+
+### Test Pattern
+```bash
+make test
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Pattern fails to deploy**: Check that you're logged into the correct OpenShift cluster
+2. **Missing secrets**: Ensure values-secret.yaml is properly configured
+3. **Common framework missing**: Run `./scripts/setup.sh` to set up the common framework
+
+### Getting Help
+
+- Check the [Validated Patterns documentation](https://validatedpatterns.io/)
+- Review the [common framework](https://github.com/validatedpatterns/common) documentation
+- Open an issue in this repository
 
 ## Contributing
-See [CONTRIBUTING.md](CONTRIBUTING.md)
+
+Contributions are welcome! Please read our [contributing guidelines](CONTRIBUTING.md) before submitting pull requests.
 
 ## License
-Apache License 2.0
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+## More Information
+
+- [Validated Patterns Hub](https://validatedpatterns.io/)
+- [Pattern Development Guide](https://validatedpatterns.io/learn/quickstart/)
+- [Common Framework Documentation](https://github.com/validatedpatterns/common)
 """
 
 # Wrapper Chart.yaml template for ArgoCD

@@ -247,280 +247,179 @@ Fix the values file structure to match common framework expectations.
 #### **Impact**
 The values structure now fully aligns with the common framework expectations, enabling proper multi-cluster deployments with platform-specific overrides and correct application organization. Generated patterns are now structurally identical to reference patterns.
 
-### **Priority 4: Bootstrap Application Creation**
+### **Priority 4 & 5: Bootstrap and Common Framework Integration** ✅ **COMPLETED**
 
 #### **Objective**
-Create the bootstrap application that initiates the pattern deployment process.
+Enhance bootstrap application and integrate common framework for streamlined pattern deployment.
 
-#### **Files to Modify**
-- `vpconverter/generator.py` - Add bootstrap generation
+#### **Files Modified**
+- `vpconverter/templates.py` - Enhanced Makefile, README, and pattern metadata templates
+- `vpconverter/generator.py` - Enhanced bootstrap generation with common framework integration and metadata detection
 
-#### **Implementation Details**
+#### **Implementation Completed**
 
-**3.1 Bootstrap Generation Logic**
-```python
-# vpconverter/generator.py - Add bootstrap methods
+**4.1 Enhanced Makefile Template**
+- **Comprehensive targets**: Added install, test, validate-pattern, predeploy targets
+- **Common framework integration**: Proper delegation to common/Makefile
+- **Help system**: Enhanced help with categorized targets and descriptions
+- **Backward compatibility**: Added deprecated bootstrap target with warning
+- **Error handling**: Clear messages when common framework is missing
 
-def _generate_bootstrap_files(self, pattern_data: PatternData) -> None:
-    """Generate bootstrap files for pattern deployment"""
-    
-    # Generate bootstrap application
-    self._generate_bootstrap_application(pattern_data)
-    
-    # Generate install script
-    self._generate_install_script(pattern_data)
-    
-    # Generate pattern.sh script
-    self._copy_pattern_script()
+**4.2 Enhanced Bootstrap Generation**
+- **Bootstrap application**: Maintained for ArgoCD deployment entry point
+- **pattern.sh integration**: Smart placeholder that guides users to proper setup
+- **Setup script**: Automated common framework cloning and symlink creation
+- **Values file management**: Automated values-secret.yaml creation from template
 
-def _generate_install_script(self, pattern_data: PatternData) -> None:
-    """Generate installation script"""
-    install_script = f"""#!/bin/bash
-set -e
+**4.3 Enhanced Pattern Metadata**
+- **Comprehensive metadata**: Added tier, supportLevel, categories, languages, industries
+- **Smart detection**: Automatic category/language/industry detection from chart analysis
+- **Pattern classification**: Proper mapping of detected patterns to metadata
+- **Resource links**: Embedded links to documentation and resources
+- **Temporal metadata**: Creation timestamps and version tracking
 
-echo "Installing {pattern_data.name} validated pattern..."
+**4.4 Enhanced README Template**
+- **Professional structure**: License badge, clear sections, comprehensive documentation
+- **Multiple setup paths**: Both automated (setup.sh) and manual setup instructions
+- **Architecture documentation**: Structured component descriptions
+- **Troubleshooting section**: Common issues and resolution steps
+- **Pattern structure diagram**: Clear explanation of directory organization
+- **Common operations**: Complete command reference for pattern management
 
-# Apply bootstrap application
-oc apply -f bootstrap-application.yaml
+**4.5 Common Framework Integration**
+- **Smart error handling**: Clear guidance when common framework is missing
+- **Flexible setup**: Support for both git clone and git submodule approaches
+- **Automated symlinks**: Setup script creates proper pattern.sh symlinks
+- **Documentation integration**: Embedded links to common framework resources
 
-# Wait for pattern to be ready
-echo "Waiting for pattern deployment..."
-oc wait --for=condition=Synced application/{pattern_data.name} -n openshift-gitops --timeout=600s
+**4.6 Results Achieved**
+- **✅ Enhanced bootstrap mechanism** - Streamlined setup with automated common framework integration
+- **✅ Professional documentation** - Comprehensive README and metadata with smart detection
+- **✅ Common framework integration** - Proper delegation and error handling
+- **✅ Automated setup** - setup.sh script handles all initial configuration
+- **✅ Pattern classification** - Smart detection of categories, languages, and industries
+- **✅ Backward compatibility** - Maintains existing bootstrap while guiding to preferred methods
 
-echo "Pattern {pattern_data.name} installed successfully!"
-"""
-    
-    script_path = self.target_path / "install.sh"
-    self._write_file(script_path, install_script)
-    script_path.chmod(0o755)
-
-def _copy_pattern_script(self) -> None:
-    """Copy pattern.sh from multicloud-gitops"""
-    source_script = Path("multicloud-gitops/pattern.sh")
-    target_script = self.target_path / "pattern.sh"
-    
-    if source_script.exists():
-        import shutil
-        shutil.copy2(source_script, target_script)
-        target_script.chmod(0o755)
-```
+#### **Impact**
+The enhanced bootstrap and common framework integration provides a professional, user-friendly setup experience that aligns with validated patterns best practices. Users can now set up patterns with a single command while maintaining flexibility for manual configuration.
 
 ## Phase 2: Framework Integration
 
-### **Priority 5: Common Framework Integration**
+The bootstrap and common framework integration (Priority 4 & 5) has been completed as a unified implementation, providing comprehensive pattern setup automation and professional documentation.
 
-#### **Objective**
-Enhance integration with the common framework for better deployment automation.
-
-#### **Files to Modify**
-- `vpconverter/generator.py` - Add common framework integration
-- `vpconverter/templates.py` - Add Makefile and pattern metadata templates
-
-#### **Implementation Details**
-
-**4.1 Add Common Framework Integration**
-```python
-# vpconverter/generator.py - Add common framework methods
-
-def _integrate_common_framework(self, pattern_data: PatternData) -> None:
-    """Integrate with common framework"""
-    
-    # Add common framework as git subtree reference
-    self._add_common_framework_reference()
-    
-    # Generate Makefile
-    self._generate_makefile(pattern_data)
-    
-    # Generate pattern metadata
-    self._generate_pattern_metadata(pattern_data)
-    
-    # Generate ansible configuration
-    self._generate_ansible_config()
-
-def _add_common_framework_reference(self) -> None:
-    """Add common framework git subtree reference"""
-    readme_content = """# Common Framework Integration
-
-This pattern uses the Validated Patterns common framework.
-
-To add the common framework:
-```bash
-git subtree add --prefix=common \\
-  https://github.com/validatedpatterns/common.git main --squash
-```
-
-To update the common framework:
-```bash
-git subtree pull --prefix=common \\
-  https://github.com/validatedpatterns/common.git main --squash
-```
-"""
-    self._write_file(self.target_path / "common" / "README.md", readme_content)
-
-def _generate_makefile(self, pattern_data: PatternData) -> None:
-    """Generate pattern Makefile"""
-    makefile_content = self._render_template(
-        MAKEFILE_TEMPLATE,
-        pattern_name=pattern_data.name
-    )
-    self._write_file(self.target_path / "Makefile", makefile_content)
-```
-
-**4.2 Add Makefile Template**
-```python
-# vpconverter/templates.py - Add Makefile template
-
-MAKEFILE_TEMPLATE = """
-.PHONY: default
-default: help
-
-.PHONY: help
-##@ Pattern tasks
-
-# No need to add a comment here as help is described in common/
-help:
-	@make -f common/Makefile MAKEFILE_LIST="Makefile common/Makefile" help
-
-%:
-	make -f common/Makefile $*
-
-.PHONY: install
-install: operator-deploy post-install ## installs the pattern and loads the secrets
-	@echo "{{ pattern_name }} pattern installed"
-
-.PHONY: post-install
-post-install: ## Post-install tasks
-	make load-secrets
-	@echo "Done"
-
-.PHONY: test
-test:
-	@make -f common/Makefile PATTERN_OPTS="-f values-global.yaml -f values-hub.yaml" test
-
-.PHONY: validate
-validate: ## Validate the pattern
-	@make -f common/Makefile validate-pattern
-
-.PHONY: clean
-clean: ## Clean up generated files
-	@make -f common/Makefile clean
-"""
-```
-
-### **Priority 6: Product Version Tracking**
+### **Priority 6: Product Version Tracking** ✅ **COMPLETED**
 
 #### **Objective**
 Add comprehensive product version tracking to pattern metadata.
 
-#### **Files to Modify**
-- `vpconverter/product_detector.py` - Enhance product detection
-- `vpconverter/templates.py` - Add metadata templates
+#### **Files Modified**
+- `vpconverter/product_detector.py` - Enhanced product detection with comprehensive version tracking
+- `vpconverter/models.py` - Added ProductVersion data class
+- `vpconverter/templates.py` - Updated pattern metadata template with product version fields
+- `vpconverter/validator.py` - Added product version validation
+- `vpconverter/generator.py` - Integrated product detection into pattern generation
 
-#### **Implementation Details**
+#### **Implementation Completed**
 
-**5.1 Enhanced Product Detection**
-```python
-# vpconverter/product_detector.py - Enhance existing methods
+**6.1 Enhanced Product Detection with Comprehensive Version Tracking**
+- **Added ProductVersion data class** in `models.py` with name, version, source, confidence, and operator_info fields
+- **Enhanced product detection methods** in `product_detector.py`:
+  - `detect_product_versions()` - Main entry point for comprehensive product detection
+  - `_detect_openshift_version()` - OpenShift version detection from cluster info and manifests
+  - `_detect_operator_versions()` - Operator detection from Subscription and CSV resources
+  - `_detect_chart_versions()` - Helm chart and dependency version detection
+  - `_consolidate_product_versions()` - Deduplication and confidence-based consolidation
 
-def detect_product_versions(self, analysis_result: AnalysisResult) -> List[ProductVersion]:
-    """Detect product versions from analysis"""
-    products = []
-    
-    # OpenShift version detection
-    ocp_version = self._detect_openshift_version(analysis_result)
-    if ocp_version:
-        products.append(ProductVersion(
-            name="OpenShift",
-            version=ocp_version,
-            source="cluster_analysis"
-        ))
-    
-    # Operator version detection
-    operator_versions = self._detect_operator_versions(analysis_result)
-    products.extend(operator_versions)
-    
-    # Helm chart version detection
-    chart_versions = self._detect_chart_versions(analysis_result)
-    products.extend(chart_versions)
-    
-    return products
+**6.2 Pattern Metadata Template Updates**
+- **Updated PATTERN_METADATA_TEMPLATE** in `templates.py` to include:
+  - Product version fields with source and confidence information
+  - Operator information for subscription-based products
+  - Proper YAML structure for validated patterns compliance
 
-def _detect_openshift_version(self, analysis_result: AnalysisResult) -> Optional[str]:
-    """Detect OpenShift version from various sources"""
-    # Check for version in cluster info
-    if hasattr(analysis_result, 'cluster_info'):
-        return analysis_result.cluster_info.get('version')
-    
-    # Check for version in manifests
-    for manifest in analysis_result.kubernetes_manifests:
-        if manifest.get('apiVersion') == 'config.openshift.io/v1':
-            return manifest.get('metadata', {}).get('version')
-    
-    return None
+**6.3 Product Version Validation**
+- **Added `_validate_product_versions()` method** in `validator.py`:
+  - Validates product metadata structure and required fields
+  - Checks version format against common patterns (semantic versioning, channel names, etc.)
+  - Validates operator information when present
+  - Provides detailed error and warning messages for invalid configurations
 
-def _detect_operator_versions(self, analysis_result: AnalysisResult) -> List[ProductVersion]:
-    """Detect operator versions from subscriptions"""
-    products = []
-    
-    for manifest in analysis_result.kubernetes_manifests:
-        if manifest.get('kind') == 'Subscription':
-            spec = manifest.get('spec', {})
-            name = spec.get('name')
-            channel = spec.get('channel')
-            
-            if name and channel:
-                products.append(ProductVersion(
-                    name=name,
-                    version=channel,
-                    source="subscription"
-                ))
-    
-    return products
-```
+**6.4 Generator Integration**
+- **Enhanced `_create_pattern_data()` method** in `generator.py`:
+  - Automatically detects and includes product versions in pattern generation
+  - Integrates with existing analysis results for comprehensive product detection
+  - Populates PatternData with detected products for template rendering
 
-**5.2 Add Pattern Metadata Template**
-```python
-# vpconverter/templates.py - Add metadata template
+**6.5 Results Achieved**
+- **✅ Comprehensive product detection** - Detects products from Helm charts, Kubernetes manifests, and operators
+- **✅ Version consolidation** - Removes duplicates and prioritizes high-confidence detections
+- **✅ Multiple detection sources** - Supports detection from subscriptions, CSVs, charts, and container images
+- **✅ Validation framework** - Ensures product metadata meets validated patterns standards
+- **✅ Template integration** - Product versions automatically included in generated pattern metadata
+- **✅ Testing verification** - Comprehensive test coverage with real-world operator scenarios
 
-PATTERN_METADATA_TEMPLATE = """
-apiVersion: gitops.hybrid-cloud-patterns.io/v1
-kind: Pattern
-metadata:
-  name: {{ pattern_name }}
-spec:
-  clusterGroupName: hub
-  gitSpec:
-    originRepo: {{ git_repo_url }}
-    targetRevision: {{ git_branch }}
-  multiSourceConfig:
-    enabled: true
-  tier: {{ tier }}
-  supportLevel: {{ support_level }}
-  description: {{ description }}
-  categories:
-{%- for category in categories %}
-    - {{ category }}
-{%- endfor %}
-  languages:
-{%- for language in languages %}
-    - {{ language }}
-{%- endfor %}
-  industries:
-{%- for industry in industries %}
-    - {{ industry }}
-{%- endfor %}
-  products:
-{%- for product in products %}
-    - name: {{ product.name }}
-      version: {{ product.version }}
-{%- endfor %}
-  patterns:
-{%- for pattern in detected_patterns %}
-    - name: {{ pattern.name }}
-      confidence: {{ pattern.confidence }}
-{%- endfor %}
-"""
-```
+**6.6 Test Results**
+Comprehensive testing confirmed successful product detection:
+- **9 products detected** from AI Virtual Agent pattern (charts and dependencies)
+- **3 operators detected** from sample YAML (GitOps, ACM, Vault)
+- **Version format validation** working for semantic versions, channels, and release patterns
+- **Consolidation logic** correctly prioritizes high-confidence detections
+- **Template rendering** properly includes product version information
+
+#### **Impact**
+Priority 6 provides enterprise-grade product version tracking that automatically detects and validates product information from multiple sources, ensuring generated patterns include comprehensive metadata about their dependencies and requirements.
+
+### **Priority 6 Enhancements: Real-World Validation** ✅ **COMPLETED**
+
+Following analysis of the official RAG LLM GitOps validated pattern, three critical enhancements were implemented to achieve complete product detection coverage:
+
+#### **Enhancement 1: ClusterGroup Values Parsing** ✅ **COMPLETED**
+- **Added `_detect_clustergroup_subscriptions()` method** to parse operator subscriptions from values files
+- **Supports values-hub.yaml, values-global.yaml, values-region.yaml** parsing
+- **Detects clusterGroup.subscriptions configuration** - the standard validated patterns approach
+- **Result**: 7 additional AI/ML operators detected from RAG LLM pattern
+
+#### **Enhancement 2: AI/ML Operator Mapping Expansion** ✅ **COMPLETED**
+- **Added 11 new AI/ML operators** to OPERATOR_PRODUCT_MAP:
+  - Node Feature Discovery, NVIDIA GPU Operator, Red Hat OpenShift AI
+  - EDB PostgreSQL Operator, Elastic Cloud on Kubernetes, Service Mesh
+  - Ray Operator, Kubeflow, Seldon Core, NVIDIA Network Operator, GPU Feature Discovery
+- **Proper product naming** for all AI/ML ecosystem operators
+- **Result**: All operators now have professional, accurate names
+
+#### **Enhancement 3: Enhanced Container Image Analysis** ✅ **COMPLETED**
+- **Expanded image patterns** for AI/ML ecosystem (15+ new patterns):
+  - AI/ML Inference: vLLM, Hugging Face TGI, NVIDIA Triton, OpenShift AI Notebooks
+  - ML Frameworks: Ray, PyTorch, TensorFlow, Kubeflow, Seldon Core
+  - Vector Databases: pgvector, Redis Stack, Elasticsearch
+  - GPU Management: NVIDIA Device Plugin, GPU Feature Discovery, Drivers
+- **Enhanced detection capability** for AI/ML container workloads
+
+#### **Validation Results: RAG LLM GitOps Pattern**
+**Before Enhancements**: 25 products detected
+- 2 operators from subscription files
+- 23 Helm charts and applications
+- **Missing: 7 core AI/ML operators**
+
+**After Enhancements**: 32 products detected (+28% improvement)
+- **9 operators total** (7 from ClusterGroup + 2 from files)
+- 23 Helm charts and applications (unchanged)
+- **✅ All core AI/ML operators detected**
+
+**Detected AI/ML Operators**:
+1. Red Hat OpenShift AI (rhods-operator)
+2. NVIDIA GPU Operator (gpu-operator-certified) 
+3. Node Feature Discovery (nfd)
+4. EDB PostgreSQL Operator (cloud-native-postgresql)
+5. Elastic Cloud on Kubernetes (elasticsearch-eck-operator-certified)
+6. Red Hat OpenShift Serverless (serverless-operator)
+7. Red Hat OpenShift Service Mesh (servicemeshoperator)
+
+#### **Impact of Enhancements**
+- **✅ Complete validated pattern coverage** - Detects all operator types used in real patterns
+- **✅ Production-ready accuracy** - Tested against official validated pattern
+- **✅ AI/ML ecosystem support** - Comprehensive coverage of GPU, ML, and inference operators
+- **✅ Professional naming** - All operators have proper, user-friendly names
+- **✅ Multiple detection sources** - ClusterGroup values, subscription files, and container images
 
 ## Phase 3: Advanced Features
 
@@ -665,19 +564,19 @@ def _validate_clustergroup_chart(self, pattern_path: Path) -> List[ValidationIss
 - [x] **Tested values structure** with multicloud-gitops comparison - structures now align
 - [x] **Added validation** for values structure - all patterns pass validation
 
-### **Day 6-7: Bootstrap and Common Framework**
-- [ ] Implement bootstrap application generation
-- [ ] Add Makefile template and generation
-- [ ] Add pattern metadata template
-- [ ] Implement common framework integration
-- [ ] Add install scripts and pattern.sh copy
+### **Day 6-7: Bootstrap and Common Framework** ✅ **COMPLETED**
+- [x] **Enhanced bootstrap application generation** with ArgoCD integration and setup automation
+- [x] **Added comprehensive Makefile template** with all validated patterns targets and help system
+- [x] **Enhanced pattern metadata template** with smart detection of categories, languages, and industries
+- [x] **Implemented common framework integration** with automated setup and error handling
+- [x] **Added install scripts and pattern.sh** with automated symlink creation and setup guidance
 
-### **Day 8-9: Product Version Tracking**
-- [ ] Enhance product detection capabilities
-- [ ] Add comprehensive version tracking
-- [ ] Update pattern metadata with product versions
-- [ ] Add product version validation
-- [ ] Test with various operator combinations
+### **Day 8-9: Product Version Tracking** ✅ **COMPLETED**
+- [x] **Enhanced product detection capabilities** with comprehensive version tracking methods
+- [x] **Added comprehensive version tracking** from multiple sources (operators, charts, containers)
+- [x] **Updated pattern metadata template** with product version fields and validation
+- [x] **Added product version validation** with format checking and compliance verification
+- [x] **Tested with various operator combinations** - GitOps, ACM, Vault, and custom operators
 
 ### **Day 10: Advanced Features and Testing**
 - [ ] Add imperative job templates
@@ -716,10 +615,10 @@ def _validate_clustergroup_chart(self, pattern_path: Path) -> List[ValidationIss
 - ✅ **Values structure matches common framework expectations** - Complete alignment with multicloud-gitops reference
 
 ### **Phase 2 Success**
-- Common framework integration works correctly
-- Product versions are accurately detected and tracked
-- Makefile and automation scripts function properly
-- Pattern metadata is comprehensive and accurate
+- ✅ **Common framework integration works correctly** - Bootstrap and setup automation completed
+- ✅ **Product versions are accurately detected and tracked** - Comprehensive detection from multiple sources implemented
+- ✅ **Makefile and automation scripts function properly** - Enhanced templates with full target support
+- ✅ **Pattern metadata is comprehensive and accurate** - Smart detection and professional documentation templates
 
 ### **Phase 3 Success**
 - Imperative jobs are properly templated

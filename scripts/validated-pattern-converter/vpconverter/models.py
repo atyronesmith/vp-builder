@@ -29,6 +29,16 @@ class HelmChart:
 
 
 @dataclass
+class ProductVersion:
+    """Represents a product version detected in the pattern."""
+    name: str
+    version: str
+    source: str  # Where it was detected from (e.g., "subscription", "cluster_analysis", "chart")
+    confidence: str = "high"  # high, medium, low
+    operator_info: Optional[Dict[str, str]] = None
+
+
+@dataclass
 class ArchitecturePattern:
     """Represents a detected architecture pattern."""
     name: str
@@ -91,6 +101,7 @@ class PatternData:
     subscriptions: List[ClusterGroupSubscription] = field(default_factory=list)
     projects: List[str] = field(default_factory=list)
     applications: List[ClusterGroupApplication] = field(default_factory=list)
+    products: List[ProductVersion] = field(default_factory=list)
     cluster_group_data: Optional[ClusterGroupData] = None
 
 

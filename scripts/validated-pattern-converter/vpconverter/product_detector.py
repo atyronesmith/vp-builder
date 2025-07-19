@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set
 from dataclasses import dataclass
 
+from .models import ProductVersion, AnalysisResult
+
 @dataclass
 class DetectedProduct:
     """Represents a detected product with its metadata."""
@@ -73,6 +75,51 @@ class ProductDetector:
         },
         "kiali-ossm": {
             "name": "Red Hat OpenShift Service Mesh - Kiali",
+            "default_channel": "stable"
+        },
+        # AI/ML and GPU Operators
+        "nfd": {
+            "name": "Node Feature Discovery",
+            "default_channel": "stable"
+        },
+        "gpu-operator-certified": {
+            "name": "NVIDIA GPU Operator",
+            "default_channel": "stable"
+        },
+        "rhods-operator": {
+            "name": "Red Hat OpenShift AI",
+            "default_channel": "stable"
+        },
+        "cloud-native-postgresql": {
+            "name": "EDB PostgreSQL Operator",
+            "default_channel": "stable"
+        },
+        "elasticsearch-eck-operator-certified": {
+            "name": "Elastic Cloud on Kubernetes",
+            "default_channel": "stable"
+        },
+        "servicemeshoperator": {
+            "name": "Red Hat OpenShift Service Mesh",
+            "default_channel": "stable"
+        },
+        "ray-operator": {
+            "name": "Ray Operator for ML",
+            "default_channel": "alpha"
+        },
+        "kubeflow-operator": {
+            "name": "Kubeflow Operator",
+            "default_channel": "stable"
+        },
+        "seldon-operator": {
+            "name": "Seldon Core Operator",
+            "default_channel": "stable"
+        },
+        "nvidia-network-operator": {
+            "name": "NVIDIA Network Operator",
+            "default_channel": "stable"
+        },
+        "gpu-feature-discovery": {
+            "name": "GPU Feature Discovery",
             "default_channel": "stable"
         },
         # Community Operators
@@ -231,11 +278,41 @@ class ProductDetector:
 
         # Known image patterns to product mapping
         image_patterns = {
+            # OpenShift Core Components
             'registry.redhat.io/openshift4/ose-oauth-proxy': ('OAuth Proxy', 'OpenShift Component'),
             'registry.redhat.io/rhel8/postgresql': ('PostgreSQL', 'Database'),
             'registry.redhat.io/rhel8/redis': ('Redis', 'Cache'),
             'registry.redhat.io/amq7/amq-broker': ('Red Hat AMQ Broker', 'Messaging'),
             'registry.redhat.io/rh-sso-7/sso': ('Red Hat Single Sign-On', 'Authentication'),
+            
+            # AI/ML and Inference Services
+            'quay.io/vllm/vllm-openai': ('vLLM OpenAI Server', 'AI/ML Inference'),
+            'ghcr.io/huggingface/text-generation-inference': ('Hugging Face TGI', 'AI/ML Inference'),
+            'nvcr.io/nvidia/tritonserver': ('NVIDIA Triton', 'AI/ML Inference'),
+            'quay.io/modh/odh-notebook': ('OpenShift AI Notebook', 'AI/ML Development'),
+            'quay.io/opendatahub/kubeflow': ('Kubeflow', 'ML Pipeline'),
+            'quay.io/ray/ray': ('Ray Distributed Computing', 'ML Framework'),
+            'nvcr.io/nvidia/pytorch': ('PyTorch NVIDIA', 'ML Framework'),
+            'nvcr.io/nvidia/tensorflow': ('TensorFlow NVIDIA', 'ML Framework'),
+            'quay.io/seldon/seldon-core': ('Seldon Core', 'ML Serving'),
+            
+            # Vector Databases and ML Storage
+            'docker.io/pgvector/pgvector': ('pgvector PostgreSQL', 'Vector Database'),
+            'redis/redis-stack-server': ('Redis Stack', 'Vector Database'),
+            'docker.elastic.co/elasticsearch/elasticsearch': ('Elasticsearch', 'Vector Database'),
+            'quay.io/minio/minio': ('MinIO', 'Object Storage'),
+            
+            # GPU and Hardware Acceleration
+            'nvcr.io/nvidia/k8s-device-plugin': ('NVIDIA Device Plugin', 'GPU Management'),
+            'nvcr.io/nvidia/gpu-feature-discovery': ('GPU Feature Discovery', 'GPU Management'),
+            'nvcr.io/nvidia/driver': ('NVIDIA Driver', 'GPU Driver'),
+            
+            # Monitoring and Observability for AI/ML
+            'quay.io/prometheus/prometheus': ('Prometheus', 'Monitoring'),
+            'grafana/grafana': ('Grafana', 'Visualization'),
+            'quay.io/jaegertracing/jaeger': ('Jaeger', 'Distributed Tracing'),
+            
+            # Authentication and Security
             'quay.io/keycloak/keycloak': ('Keycloak', 'Authentication'),
             'docker.io/bitnami/postgresql': ('PostgreSQL', 'Database'),
             'docker.io/bitnami/redis': ('Redis', 'Cache'),
@@ -331,3 +408,307 @@ class ProductDetector:
         final_products.sort(key=sort_key)
 
         return final_products
+
+    def detect_product_versions(self, analysis_result: AnalysisResult) -> List[ProductVersion]:
+        """Detect product versions from analysis result."""
+        products = []
+        
+        # OpenShift version detection
+        ocp_version = self._detect_openshift_version(analysis_result)
+        if ocp_version:
+            products.append(ProductVersion(
+                name="OpenShift Container Platform",
+                version=ocp_version,
+                source="cluster_analysis",
+                confidence="high"
+            ))
+        
+        # Operator version detection from manifests
+        operator_versions = self._detect_operator_versions(analysis_result)
+        products.extend(operator_versions)
+        
+        # Helm chart version detection
+        chart_versions = self._detect_chart_versions(analysis_result)
+        products.extend(chart_versions)
+        
+        # Detect from files in source path
+        if hasattr(analysis_result, 'source_path'):
+            detected_products = self.detect_from_path(analysis_result.source_path)
+            for dp in detected_products:
+                # Convert DetectedProduct to ProductVersion
+                pv = ProductVersion(
+                    name=dp.name,
+                    version=dp.version,
+                    source=dp.source,
+                    confidence=dp.confidence,
+                    operator_info=dp.operator
+                )
+                products.append(pv)
+        
+        # Remove duplicates and consolidate
+        return self._consolidate_product_versions(products)
+
+    def _detect_openshift_version(self, analysis_result: AnalysisResult) -> Optional[str]:
+        """Detect OpenShift version from various sources."""
+        
+        # Check for version in cluster info if available
+        if hasattr(analysis_result, 'cluster_info') and analysis_result.cluster_info:
+            cluster_version = analysis_result.cluster_info.get('version')
+            if cluster_version:
+                return cluster_version
+        
+        # Check for version in Kubernetes manifests
+        if hasattr(analysis_result, 'kubernetes_manifests'):
+            for manifest in analysis_result.kubernetes_manifests:
+                if manifest.get('apiVersion') == 'config.openshift.io/v1':
+                    if manifest.get('kind') == 'ClusterVersion':
+                        spec = manifest.get('spec', {})
+                        desired_update = spec.get('desiredUpdate', {})
+                        version = desired_update.get('version')
+                        if version:
+                            return version
+                
+                # Check for OpenShift-specific API versions to infer version range
+                api_version = manifest.get('apiVersion', '')
+                if 'openshift.io' in api_version:
+                    # Basic heuristic - if we see OpenShift APIs, assume 4.x
+                    return "4.x"
+        
+        # Check for OpenShift-specific configuration in Helm charts
+        for chart in analysis_result.helm_charts:
+            if self._chart_suggests_openshift_version(chart):
+                return "4.x"  # Default assumption for modern charts
+        
+        return None
+
+    def _detect_operator_versions(self, analysis_result: AnalysisResult) -> List[ProductVersion]:
+        """Detect operator versions from subscriptions and CSVs."""
+        products = []
+        
+        # Check YAML files for Subscription and CSV resources
+        for yaml_file in analysis_result.yaml_files:
+            try:
+                with open(yaml_file, 'r') as f:
+                    content = f.read()
+                
+                for doc in yaml.safe_load_all(content):
+                    if not doc:
+                        continue
+                    
+                    if doc.get('kind') == 'Subscription':
+                        product = self._extract_product_from_subscription(doc, str(yaml_file))
+                        if product:
+                            products.append(product)
+                    
+                    elif doc.get('kind') == 'ClusterServiceVersion':
+                        product = self._extract_product_from_csv(doc, str(yaml_file))
+                        if product:
+                            products.append(product)
+            
+            except Exception:
+                # Skip files that can't be parsed
+                continue
+        
+        # Check for ClusterGroup subscription configurations in values files
+        clustergroup_products = self._detect_clustergroup_subscriptions(analysis_result)
+        products.extend(clustergroup_products)
+        
+        return products
+
+    def _detect_chart_versions(self, analysis_result: AnalysisResult) -> List[ProductVersion]:
+        """Detect versions from Helm charts."""
+        products = []
+        
+        for chart in analysis_result.helm_charts:
+            # Chart itself as a product
+            if chart.version:
+                products.append(ProductVersion(
+                    name=f"{chart.name} (Helm Chart)",
+                    version=chart.version,
+                    source=f"chart:{chart.path}",
+                    confidence="high"
+                ))
+            
+            # App version if different from chart version
+            if chart.app_version and chart.app_version != chart.version:
+                products.append(ProductVersion(
+                    name=f"{chart.name} Application",
+                    version=chart.app_version,
+                    source=f"chart:{chart.path}",
+                    confidence="medium"
+                ))
+            
+            # Dependencies
+            for dep in chart.dependencies:
+                if dep.get('version'):
+                    products.append(ProductVersion(
+                        name=f"{dep.get('name', 'Unknown')} (Dependency)",
+                        version=dep['version'],
+                        source=f"chart_dependency:{chart.path}",
+                        confidence="medium"
+                    ))
+        
+        return products
+
+    def _extract_product_from_subscription(self, subscription: Dict, source: str) -> Optional[ProductVersion]:
+        """Extract ProductVersion from a Subscription resource."""
+        spec = subscription.get('spec', {})
+        name = spec.get('name', '')
+        channel = spec.get('channel', '')
+        source_name = spec.get('source', 'redhat-operators')
+        starting_csv = spec.get('startingCSV', '')
+
+        # Look up in our known operators
+        if name in self.OPERATOR_PRODUCT_MAP:
+            product_info = self.OPERATOR_PRODUCT_MAP[name]
+            version = self._extract_version_from_channel(channel) or "latest"
+
+            return ProductVersion(
+                name=product_info['name'],
+                version=version,
+                source=f"subscription:{source}",
+                confidence="high",
+                operator_info={
+                    'channel': channel or product_info['default_channel'],
+                    'source': source_name,
+                    'subscription': name
+                }
+            )
+        else:
+            # Unknown operator - make best guess
+            version = self._extract_version_from_channel(channel) or \
+                     self._extract_version_from_csv(starting_csv) or \
+                     "unknown"
+
+            # Clean up the name for display
+            display_name = name.replace('-operator', '').replace('-', ' ').title()
+
+            return ProductVersion(
+                name=f"{display_name} (Operator)",
+                version=version,
+                source=f"subscription:{source}",
+                confidence="low",
+                operator_info={
+                    'channel': channel,
+                    'source': source_name,
+                    'subscription': name
+                }
+            )
+
+    def _extract_product_from_csv(self, csv: Dict, source: str) -> Optional[ProductVersion]:
+        """Extract ProductVersion from a ClusterServiceVersion."""
+        metadata = csv.get('metadata', {})
+        spec = csv.get('spec', {})
+
+        name = spec.get('displayName', metadata.get('name', ''))
+        version = spec.get('version', '')
+
+        if not version:
+            # Try to extract from metadata name
+            version = self._extract_version_from_csv(metadata.get('name', ''))
+
+        if name and version:
+            return ProductVersion(
+                name=name,
+                version=version or "unknown",
+                source=f"csv:{source}",
+                confidence="medium"
+            )
+        return None
+
+    def _chart_suggests_openshift_version(self, chart) -> bool:
+        """Check if a chart suggests a specific OpenShift version."""
+        # Check chart metadata and templates for OpenShift-specific features
+        if hasattr(chart, 'templates_found'):
+            openshift_resources = [
+                'Route', 'DeploymentConfig', 'BuildConfig', 'ImageStream',
+                'SecurityContextConstraints', 'Project'
+            ]
+            for template in chart.templates_found:
+                if any(resource in template for resource in openshift_resources):
+                    return True
+        
+        return False
+
+    def _consolidate_product_versions(self, products: List[ProductVersion]) -> List[ProductVersion]:
+        """Remove duplicates and consolidate product versions."""
+        # Use a dict to track unique products by name
+        consolidated: Dict[str, ProductVersion] = {}
+        
+        for product in products:
+            existing = consolidated.get(product.name)
+            if not existing:
+                consolidated[product.name] = product
+            else:
+                # Keep the one with higher confidence
+                if (product.confidence == "high" and existing.confidence != "high") or \
+                   (product.confidence == "medium" and existing.confidence == "low"):
+                    consolidated[product.name] = product
+                elif product.confidence == existing.confidence and product.version != "unknown":
+                    # Same confidence, prefer non-unknown version
+                    if existing.version == "unknown":
+                        consolidated[product.name] = product
+        
+        # Convert back to list and sort
+        result = list(consolidated.values())
+        result.sort(key=lambda p: (0 if "OpenShift" in p.name else 1, p.name))
+        
+        return result
+
+    def _detect_clustergroup_subscriptions(self, analysis_result: AnalysisResult) -> List[ProductVersion]:
+        """Detect operator subscriptions from ClusterGroup values files."""
+        products = []
+        
+        # Look for values files that might contain ClusterGroup configurations
+        values_files = [
+            'values-hub.yaml',
+            'values-global.yaml', 
+            'values-region.yaml'
+        ]
+        
+        for values_filename in values_files:
+            values_path = analysis_result.source_path / values_filename
+            if values_path.exists():
+                try:
+                    with open(values_path, 'r') as f:
+                        values_content = yaml.safe_load(f)
+                    
+                    if not values_content:
+                        continue
+                    
+                    # Look for clusterGroup.subscriptions
+                    cluster_group = values_content.get('clusterGroup', {})
+                    subscriptions = cluster_group.get('subscriptions', {})
+                    
+                    for sub_key, sub_config in subscriptions.items():
+                        if isinstance(sub_config, dict):
+                            operator_name = sub_config.get('name', sub_key)
+                            namespace = sub_config.get('namespace', 'openshift-operators')
+                            channel = sub_config.get('channel', 'stable')
+                            source = sub_config.get('source', 'redhat-operators')
+                            
+                            # Create mock subscription for extraction
+                            mock_subscription = {
+                                'kind': 'Subscription',
+                                'spec': {
+                                    'name': operator_name,
+                                    'channel': channel,
+                                    'source': source,
+                                    'namespace': namespace
+                                }
+                            }
+                            
+                            product = self._extract_product_from_subscription(
+                                mock_subscription, 
+                                f"clustergroup:{values_filename}"
+                            )
+                            if product:
+                                # Mark as ClusterGroup source for better identification
+                                product.source = f"clustergroup:{values_filename}"
+                                products.append(product)
+                
+                except Exception as e:
+                    # Skip files that can't be parsed
+                    continue
+        
+        return products

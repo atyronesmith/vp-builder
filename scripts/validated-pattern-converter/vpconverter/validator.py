@@ -97,6 +97,10 @@ class PatternValidator:
             status.update("Validating values files...")
             self._validate_values_files()
 
+            # Validate product versions
+            status.update("Validating product versions...")
+            self._validate_product_versions()
+
             # Validate scripts
             status.update("Validating shell scripts...")
             self._validate_scripts()
@@ -346,6 +350,104 @@ class PatternValidator:
 
         except Exception as e:
             self.result.add_warning(f"Could not check cluster access: {e}")
+
+    def _validate_product_versions(self) -> None:
+        """Validate product versions in pattern metadata."""
+        metadata_file = self.pattern_dir / "pattern-metadata.yaml"
+        
+        if not metadata_file.exists():
+            self.result.add_warning("Pattern metadata file not found")
+            return
+
+        try:
+            metadata = read_yaml(metadata_file)
+            if not metadata:
+                self.result.add_warning("Pattern metadata file is empty")
+                return
+
+            products = metadata.get('products', [])
+            if not products:
+                self.result.add_info("No products specified in pattern metadata")
+                return
+
+            # Validate each product entry
+            for i, product in enumerate(products):
+                if not isinstance(product, dict):
+                    self.result.add_error(f"Product entry {i} is not a dictionary")
+                    continue
+
+                # Required fields
+                name = product.get('name')
+                version = product.get('version')
+                
+                if not name:
+                    self.result.add_error(f"Product entry {i} missing 'name' field")
+                elif not isinstance(name, str):
+                    self.result.add_error(f"Product entry {i} 'name' must be a string")
+
+                if not version:
+                    self.result.add_error(f"Product entry {i} missing 'version' field")
+                elif not isinstance(version, str):
+                    self.result.add_error(f"Product entry {i} 'version' must be a string")
+
+                # Optional fields validation
+                source = product.get('source')
+                confidence = product.get('confidence')
+                operator_info = product.get('operator')
+
+                if source and not isinstance(source, str):
+                    self.result.add_warning(f"Product '{name}' source should be a string")
+
+                if confidence and confidence not in ['high', 'medium', 'low']:
+                    self.result.add_warning(f"Product '{name}' confidence should be 'high', 'medium', or 'low'")
+
+                if operator_info:
+                    if not isinstance(operator_info, dict):
+                        self.result.add_warning(f"Product '{name}' operator info should be a dictionary")
+                    else:
+                        # Validate operator fields
+                        channel = operator_info.get('channel')
+                        operator_source = operator_info.get('source')
+                        subscription = operator_info.get('subscription')
+
+                        if channel and not isinstance(channel, str):
+                            self.result.add_warning(f"Product '{name}' operator channel should be a string")
+                        
+                        if operator_source and not isinstance(operator_source, str):
+                            self.result.add_warning(f"Product '{name}' operator source should be a string")
+                        
+                        if subscription and not isinstance(subscription, str):
+                            self.result.add_warning(f"Product '{name}' operator subscription should be a string")
+
+                # Validate version format for known patterns
+                if version and version not in ['latest', 'stable', 'unknown']:
+                    if not self._is_valid_version_format(version):
+                        self.result.add_warning(f"Product '{name}' version '{version}' may not be a valid version format")
+
+            self.result.add_info(f"Validated {len(products)} product entries")
+
+        except Exception as e:
+            self.result.add_error(f"Error validating product versions: {e}")
+
+    def _is_valid_version_format(self, version: str) -> bool:
+        """Check if version follows common version format patterns."""
+        # Common version patterns:
+        # - Semantic versioning: 1.2.3, 1.2.3-beta, 1.2.3+build
+        # - Release versions: 4.14.x, 2.10.x
+        # - Channel names: stable, alpha, beta
+        # - Range indicators: 4.x, 2.10.x
+        
+        import re
+        
+        patterns = [
+            r'^\d+\.\d+\.\d+(-[a-zA-Z0-9-]+)?(\+[a-zA-Z0-9-]+)?$',  # Semantic versioning
+            r'^\d+\.\d+\.x$',  # Release with .x
+            r'^\d+\.x$',       # Major version with .x
+            r'^(stable|alpha|beta|latest|release)-\d+\.\d+$',  # Channel with version
+            r'^(stable|alpha|beta|latest)$',  # Simple channel names
+        ]
+        
+        return any(re.match(pattern, version) for pattern in patterns)
 
     def validate_deployment(self) -> bool:
         """Validate a deployed pattern on the cluster."""

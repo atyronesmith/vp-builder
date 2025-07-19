@@ -128,8 +128,9 @@ class PatternGenerator:
         # ansible/site.yaml
         self._write_file("ansible/site.yaml", ANSIBLE_SITE_TEMPLATE)
 
-        # Makefile - use bootstrap-enabled version
-        self._write_file("Makefile", MAKEFILE_BOOTSTRAP_TEMPLATE)
+        # Makefile with pattern name context
+        context = {"pattern_name": self.pattern_name}
+        self._render_and_write("Makefile", MAKEFILE_TEMPLATE, context)
 
         # pattern-metadata.yaml with products
         products = list(DEFAULT_PRODUCTS)
@@ -161,11 +162,19 @@ class PatternGenerator:
                 confidence_marker = "" if product.confidence == "high" else f" ({product.confidence} confidence)"
                 log_info(f"    - {product.name}: {product.version}{confidence_marker}")
 
+        # Create enhanced pattern metadata context
         context = {
             "pattern_name": self.pattern_name,
+            "pattern_display_name": self.pattern_name.replace('-', ' ').title() + " Pattern",
+            "pattern_description": f"Validated pattern for {self.pattern_name.replace('-', ' ')} deployment on OpenShift using GitOps",
             "github_org": self.github_org,
             "pattern_dir": self.pattern_dir.name,
-            "products": final_products
+            "products": final_products,
+            "categories": self._detect_categories(analysis_result),
+            "languages": self._detect_languages(analysis_result),
+            "industries": self._detect_industries(analysis_result),
+            "detected_patterns": list(analysis_result.detected_patterns) if hasattr(analysis_result, 'detected_patterns') else [],
+            "creation_date": datetime.now().isoformat()
         }
         self._render_and_write("pattern-metadata.yaml", PATTERN_METADATA_TEMPLATE, context)
 
@@ -461,11 +470,16 @@ metadata:
                         path=f"charts/all/{chart.name}"
                     )
                 )
+            
+            # Detect product versions
+            product_detector = ProductDetector()
+            detected_products = product_detector.detect_product_versions(analysis_result)
+            pattern_data.products = detected_products
 
         return pattern_data
 
     def _generate_bootstrap_files(self) -> None:
-        """Generate bootstrap application and scripts."""
+        """Generate bootstrap application and common framework integration."""
         # Create bootstrap directory
         bootstrap_dir = self.pattern_dir / "bootstrap"
         ensure_directory(bootstrap_dir)
@@ -482,20 +496,153 @@ metadata:
             context
         )
 
-        # Generate bootstrap script
-        context = {
-            "pattern_name": self.pattern_name
-        }
-        script_path = self.pattern_dir / "scripts" / "pattern-bootstrap.sh"
-        self._render_and_write(
-            "scripts/pattern-bootstrap.sh",
-            PATTERN_INSTALL_SCRIPT_TEMPLATE,
-            context
-        )
-        # Make script executable
-        os.chmod(script_path, 0o755)
+        # Generate pattern.sh symlink target
+        pattern_sh_content = """\
+#!/bin/bash
+# This file should be a symlink to common/scripts/pattern-util.sh
+# If you see this message, the common framework is not set up correctly.
 
-        log_info("  ✓ Created bootstrap mechanism")
+echo "ERROR: pattern.sh is not properly linked to common framework"
+echo ""
+echo "To fix this, run:"
+echo "  git clone https://github.com/validatedpatterns/common.git"
+echo "  ln -sf common/scripts/pattern-util.sh pattern.sh"
+echo ""
+echo "For more information: https://validatedpatterns.io/patterns/"
+exit 1
+"""
+        pattern_sh_path = self.pattern_dir / "pattern.sh"
+        self._write_file("pattern.sh", pattern_sh_content)
+        os.chmod(pattern_sh_path, 0o755)
+
+        # Generate setup script for common framework
+        setup_script = f"""\
+#!/bin/bash
+set -euo pipefail
+
+# Setup script for {self.pattern_name} pattern
+echo "Setting up {self.pattern_name} pattern..."
+
+# Check if common directory exists
+if [ ! -d "common" ]; then
+    echo "Cloning common framework..."
+    git clone https://github.com/validatedpatterns/common.git
+else
+    echo "Common framework already exists"
+fi
+
+# Create pattern.sh symlink
+if [ ! -L "pattern.sh" ]; then
+    echo "Creating pattern.sh symlink..."
+    ln -sf common/scripts/pattern-util.sh pattern.sh
+    chmod +x pattern.sh
+else
+    echo "pattern.sh symlink already exists"
+fi
+
+# Check if values-secret.yaml exists
+if [ ! -f "values-secret.yaml" ]; then
+    if [ -f "values-secret.yaml.template" ]; then
+        echo "Creating values-secret.yaml from template..."
+        cp values-secret.yaml.template values-secret.yaml
+        echo "Please edit values-secret.yaml with your actual secrets"
+    else
+        echo "WARNING: No values-secret.yaml.template found"
+    fi
+else
+    echo "values-secret.yaml already exists"
+fi
+
+echo ""
+echo "Setup complete! Next steps:"
+echo "1. Edit values-secret.yaml with your actual secrets"
+echo "2. Run: make install"
+echo ""
+echo "For more information: https://validatedpatterns.io/patterns/"
+"""
+        setup_script_path = self.pattern_dir / "scripts" / "setup.sh"
+        self._write_file("scripts/setup.sh", setup_script)
+        os.chmod(setup_script_path, 0o755)
+
+        log_info("  ✓ Created bootstrap mechanism and common framework integration")
+
+    def _detect_categories(self, analysis_result: AnalysisResult) -> List[str]:
+        """Detect pattern categories based on analysis."""
+        categories = ["gitops", "kubernetes"]
+        
+        # Add categories based on detected patterns
+        if hasattr(analysis_result, 'detected_patterns'):
+            pattern_set = analysis_result.detected_patterns
+            if "AI/ML Pipeline" in pattern_set:
+                categories.extend(["ai", "machine-learning", "data"])
+            if "Security" in pattern_set:
+                categories.append("security")
+            if "Scaling" in pattern_set:
+                categories.append("scalability")
+            if "Data Processing" in pattern_set:
+                categories.extend(["data", "analytics"])
+            if "MLOps" in pattern_set:
+                categories.extend(["mlops", "devops"])
+        
+        # Add categories based on chart names
+        for chart in analysis_result.helm_charts:
+            chart_name = chart.name.lower()
+            if any(keyword in chart_name for keyword in ["web", "ui", "frontend"]):
+                categories.append("web")
+            if any(keyword in chart_name for keyword in ["api", "service", "backend"]):
+                categories.append("microservices")
+            if any(keyword in chart_name for keyword in ["data", "analytics", "metrics"]):
+                categories.append("data")
+        
+        return list(set(categories))  # Remove duplicates
+
+    def _detect_languages(self, analysis_result: AnalysisResult) -> List[str]:
+        """Detect programming languages used in the pattern."""
+        languages = ["yaml", "helm"]
+        
+        # Check for common language patterns in chart names
+        for chart in analysis_result.helm_charts:
+            chart_name = chart.name.lower()
+            if any(keyword in chart_name for keyword in ["python", "py", "flask", "django"]):
+                languages.append("python")
+            if any(keyword in chart_name for keyword in ["node", "js", "express", "react", "angular"]):
+                languages.extend(["javascript", "nodejs"])
+            if any(keyword in chart_name for keyword in ["java", "spring", "tomcat"]):
+                languages.append("java")
+            if any(keyword in chart_name for keyword in ["go", "golang"]):
+                languages.append("go")
+            if any(keyword in chart_name for keyword in ["rust", "rs"]):
+                languages.append("rust")
+        
+        return list(set(languages))  # Remove duplicates
+
+    def _detect_industries(self, analysis_result: AnalysisResult) -> List[str]:
+        """Detect industries this pattern applies to."""
+        industries = ["technology", "cloud-computing"]
+        
+        # Add industries based on detected patterns
+        if hasattr(analysis_result, 'detected_patterns'):
+            pattern_set = analysis_result.detected_patterns
+            if "AI/ML Pipeline" in pattern_set or "MLOps" in pattern_set:
+                industries.extend(["artificial-intelligence", "data-science"])
+            if "Security" in pattern_set:
+                industries.extend(["cybersecurity", "compliance"])
+            if "Data Processing" in pattern_set:
+                industries.extend(["data-analytics", "business-intelligence"])
+        
+        # Add industries based on chart names and functionality
+        for chart in analysis_result.helm_charts:
+            chart_name = chart.name.lower()
+            if any(keyword in chart_name for keyword in ["finance", "banking", "payment"]):
+                industries.append("financial-services")
+            if any(keyword in chart_name for keyword in ["health", "medical", "patient"]):
+                industries.append("healthcare")
+            if any(keyword in chart_name for keyword in ["retail", "ecommerce", "shop"]):
+                industries.append("retail")
+            if any(keyword in chart_name for keyword in ["manufacturing", "iot", "sensor"]):
+                industries.append("manufacturing")
+        
+        return list(set(industries))  # Remove duplicates
 
     def _generate_platform_overrides(self) -> None:
         """Generate platform-specific override files."""
