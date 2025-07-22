@@ -163,7 +163,8 @@ def convert(
         if not skip_validation:
             console.print("\n[bold yellow]=== Phase 5: Validation ===[/bold yellow]")
             validator = PatternValidator(pattern_dir)
-            validation_result = validator.validate(check_cluster=False)
+            # Run comprehensive compliance validation for newly generated patterns
+            validation_result = validator.validate_pattern_compliance(check_cluster=False)
 
             if not validation_result.passed:
                 log_warn("Pattern validation found issues - please review and fix")
@@ -203,15 +204,20 @@ def convert(
 @cli.command()
 @click.argument("pattern-dir", type=click.Path(exists=True))
 @click.option("--check-cluster", is_flag=True, help="Also check cluster connectivity")
+@click.option("--compliance", is_flag=True, help="Run comprehensive compliance validation")
 @click.pass_context
-def validate(ctx: click.Context, pattern_dir: str, check_cluster: bool) -> None:
+def validate(ctx: click.Context, pattern_dir: str, check_cluster: bool, compliance: bool) -> None:
     """Validate a validated pattern structure."""
     pattern_path = Path(pattern_dir)
 
-    log_info(f"Validating pattern: {pattern_path}")
-
-    validator = PatternValidator(pattern_path)
-    result = validator.validate(check_cluster=check_cluster)
+    if compliance:
+        log_info(f"Running comprehensive compliance validation for: {pattern_path}")
+        validator = PatternValidator(pattern_path)
+        result = validator.validate_pattern_compliance(check_cluster=check_cluster)
+    else:
+        log_info(f"Validating pattern: {pattern_path}")
+        validator = PatternValidator(pattern_path)
+        result = validator.validate(check_cluster=check_cluster)
 
     if not result.passed:
         sys.exit(1)
